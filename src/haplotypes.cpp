@@ -1,3 +1,4 @@
+#include <iostream>
 #include "haplotypes.hpp"
 
 using namespace std;
@@ -137,6 +138,19 @@ inline XG::ThreadMapping cross_section::get_node() {
   return node;
 }
 
+void haplo_d::print_decomposition_stats(string haplo_d_out_filename) {
+  ofstream haplo_d_out (haplo_d_out_filename);
+  haplo_d_out << "|A_curr| \t J \t l \t new rect?" << std::endl;
+  int Acurrmax = 0;
+  for(int i = 0; i < cs.size(); i++) {
+    haplo_d_out << cs[i].S.size() << "\t" << cs[i].height << "\t" << cs[i].width
+          << "\t" << (cs[i].S[0].prev == &empty_rect) << "\n";
+    if(cs[i].S.size() > Acurrmax) {Acurrmax = cs[i].S.size();}
+  }
+  haplo_d_out << "|A_curr|^max = " << Acurrmax;
+  haplo_d_out.close();
+}
+
 haplo_d::haplo_d(const thread_t& t, XG& graph) {
   rectangle rect;
   rect.J = rect.get_next_J(t[0],graph);
@@ -195,6 +209,8 @@ haplo_d::haplo_d(const thread_t& t, XG& graph) {
     add_rectangle = 0;
   }
 }
+
+
 
 void haplo_d::calculate_Is(XG& graph) {
   // node 0 was done in the haplo_d constructor; start at node 1

@@ -90,6 +90,7 @@ public:
   // terms of node history) 1 or 2 rectangles at each node
   void calculate_Is(XG& graph);
   double probability(double recombination_penalty);
+  void print_decomposition_stats(string haplo_d_out_filename);
 };
 
 #endif
