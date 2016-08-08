@@ -31,6 +31,7 @@
 #include "genotyper.hpp"
 #include "bubbles.hpp"
 #include "translator.hpp"
+#include "haplotypes.hpp"
 
 // Make sure the version macro is a thing
 #ifndef VG_GIT_VERSION
@@ -1238,7 +1239,7 @@ int main_vectorize(int argc, char** argv){
             stream::for_each(in, lambda);
         }
     }
-    
+
     string mapping_str = vz.output_wabbit_map();
     if (output_wabbit){
         if (!wabbit_mapping_file.empty()){
@@ -1252,7 +1253,7 @@ int main_vectorize(int argc, char** argv){
             ofi.close();
         }
         else{
-        
+
             cerr << mapping_str;
         }
     }
@@ -1654,7 +1655,7 @@ int main_genotype(int argc, char** argv) {
     bool show_progress = false;
     // How many threads should we use?
     int thread_count = 0;
-    
+
     // What reference path should we use
     string ref_path_name;
     // What sample name should we use for output
@@ -1665,15 +1666,15 @@ int main_genotype(int argc, char** argv) {
     int64_t variant_offset = 0;
     // What length override should we use
     int64_t length_override = 0;
-    
+
     // Should we use mapping qualities?
     bool use_mapq = false;
     // Should we do indel realignment?
     bool realign_indels = false;
-    
+
     // Should we dump the augmented graph to a file?
     string augmented_file_name;
-    
+
     // Should we do superbubbles/sites with Cactus (true) or supbub (false)
     bool use_cactus = false;
 
@@ -1798,7 +1799,7 @@ int main_genotype(int argc, char** argv) {
         help_genotype(argv);
         return 1;
     }
-    
+
     string reads_index_name = argv[optind];
     // This holds the RocksDB index that has all our reads, indexed by the nodes they visit.
     Index index;
@@ -1820,7 +1821,7 @@ int main_genotype(int argc, char** argv) {
 
     index.for_alignment_to_nodes(graph_ids, [&](const Alignment& alignment) {
         // Extract all the alignments
-        
+
         // Only take alignments that don't visit nodes not in the graph
         bool contained = true;
         for(size_t i = 0; i < alignment.path().mapping_size(); i++) {
@@ -1829,17 +1830,17 @@ int main_genotype(int argc, char** argv) {
                 contained = false;
             }
         }
-        
+
         if(contained) {
             // This alignment completely falls within the graph
             alignments.push_back(alignment);
         }
     });
-        
+
     if(show_progress) {
         cerr << "Loaded " << alignments.size() << " alignments" << endl;
     }
-    
+
     // Make a Genotyper to do the genotyping
     Genotyper genotyper;
     // Configure it
@@ -1859,7 +1860,7 @@ int main_genotype(int argc, char** argv) {
                   output_json,
                   length_override,
                   variant_offset);
-                  
+
     delete graph;
 
     return 0;
@@ -3446,7 +3447,7 @@ int main_mod(int argc, char** argv) {
         case 'y':
             destroy_node_id = atoi(optarg);
             break;
-            
+
         case 'a':
             cactus = true;
             break;
@@ -4926,7 +4927,7 @@ int main_find(int argc, char** argv) {
         case 'D':
             pairwise_distance = true;
             break;
-            
+
         case 'H':
             haplotype_alignments = optarg;
             break;
@@ -5116,7 +5117,7 @@ int main_find(int argc, char** argv) {
                 // Count the amtches to the path. The path might be empty, in
                 // which case it will yield the biggest size_t you can have.
                 size_t matches = xindex.count_matches(aln.path());
-                
+
                 // We do this single-threaded, at least for now, so we don't
                 // need to worry about coordinating output, and we can just
                 // spit out the counts as bare numbers.
@@ -5133,7 +5134,7 @@ int main_find(int argc, char** argv) {
                 }
                 stream::for_each(in, lambda);
             }
-            
+
         }
     } else if (!db_name.empty()) {
         if (!node_ids.empty() && path_name.empty()) {
@@ -5274,7 +5275,7 @@ int main_find(int argc, char** argv) {
                 for (auto& mem : mems) mem.fill_nodes(&gcsa_index);
                 // dump them to stdout
                 cout << mems_to_json(mems) << endl;
-                
+
             }
         }
     }
@@ -5314,7 +5315,7 @@ int main_find(int argc, char** argv) {
             result_graph.serialize_to_ostream(cout);
         }
     }
-    
+
     if (vindex) delete vindex;
 
     return 0;
@@ -5637,13 +5638,13 @@ int main_index(int argc, char** argv) {
         VGset graphs(file_names);
         // Turn into an XG index, except for the alt paths which we pull out and load into RAM instead.
         xg::XG index = graphs.to_xg(store_threads, is_alt, alt_paths);
-        
+
         // We're going to collect all the phase threads as XG threads (which
         // aren't huge like Protobuf Paths), and then insert them all into xg in
         // a batch, for speed. This will take a lot of memory (although not as
         // much as a real vg::Paths index or vector<Path> would)
         vector<xg::XG::thread_t> all_phase_threads;
-        
+
         if(variant_file.is_open()) {
             // Now go through and add the varaints.
 
@@ -5666,7 +5667,7 @@ int main_index(int argc, char** argv) {
 
                 // How many bases is it?
                 size_t path_length = index.path_length(path_name);
-                
+
                 // Allocate some threads to store phase threads
                 vector<xg::XG::thread_t> active_phase_threads{num_phases};
                 // We need to remember how many paths of a particular phase have
@@ -5684,21 +5685,21 @@ int main_index(int argc, char** argv) {
 
                     // Find where this path is in our vector
                     xg::XG::thread_t& to_save = active_phase_threads[phase_number];
-                    
+
                     if(to_save.size() > 0) {
                         // Only actually do anything if we put in some mappings.
-                        
+
                         // Count this thread from this phase as being saved.
                         saved_phase_paths[phase_number]++;
-                        
+
                         // We don't tie threads from a pahse together in the
                         // index yet.
-                            
+
                         // Copy the thread over to our batch that we GPBWT all
                         // at once, exploiting the fact that VCF-derived graphs
                         // are DAGs.
                         all_phase_threads.push_back(to_save);
-                        
+
                         // Clear it out for re-use
                         to_save.clear();
                     }
@@ -5710,16 +5711,16 @@ int main_index(int argc, char** argv) {
                 auto append_mapping = [&](size_t phase_number, const Mapping& mapping) {
                     // Find the path to add to
                     xg::XG::thread_t& to_extend = active_phase_threads[phase_number];
-                    
+
                     // See if the edge we need to follow exists
                     if(to_extend.size() > 0) {
                         // If there's a previous mapping, go find it
                         const xg::XG::ThreadMapping& previous = to_extend[to_extend.size() - 1];
-                        
+
                         // Break out the IDs and flags we need to check for the edge
                         int64_t last_node = previous.node_id;
                         bool last_from_start = previous.is_reverse;
-                        
+
                         int64_t new_node = mapping.position().node_id();
                         bool new_to_end = mapping.position().is_reverse();
 
@@ -5731,11 +5732,11 @@ int main_index(int argc, char** argv) {
                                 << last_node << (last_from_start ? "L" : "R") << " - "
                                 << new_node << (new_to_end ? "R" : "L")
                                 << " which does not exist. Splitting!" << endl;
-#endif                    
+#endif
                             finish_phase(phase_number);
                         }
                     }
-                    
+
                     // Add a new ThreadMapping for the mapping
                     xg::XG::ThreadMapping tm = {mapping.position().node_id(), mapping.position().is_reverse()};
                     active_phase_threads[phase_number].push_back(tm);
@@ -5913,22 +5914,22 @@ int main_index(int argc, char** argv) {
                 }
 
             }
-            
+
             if(show_progress) {
                 cerr << "Inserting all phase threads into DAG..." << endl;
             }
-            
+
             // Now insert all the threads in a batch into the known-DAG VCF-
             // derived graph.
             index.insert_threads_into_dag(all_phase_threads);
             all_phase_threads.clear();
-            
+
         }
-        
+
         if(show_progress) {
             cerr << "Saving index to disk..." << endl;
         }
-        
+
         // save the xg version to the file name we've been given
         ofstream db_out(xg_name);
         index.serialize(db_out);
@@ -6515,7 +6516,7 @@ int main_map(int argc, char** argv) {
         case 's':
             seq = optarg;
             break;
-            
+
         case 'I':
             qual = string_quality_char_to_short(string(optarg));
                 break;
@@ -6697,15 +6698,15 @@ int main_map(int argc, char** argv) {
         case 'y':
             gap_extend = atoi(optarg);
             break;
-            
+
         case '1':
             qual_adjust_alignments = true;
             break;
-            
+
         case 'u':
             extra_pairing_multimaps = atoi(optarg);
                 break;
-                
+
         case 'v':
             method_code = atoi(optarg);
             break;
@@ -6740,7 +6741,7 @@ int main_map(int argc, char** argv) {
         cerr << "error:[vg map] sequence and base quality string must be the same length" << endl;
         return 1;
     }
-    
+
     if (qual_adjust_alignments && ((fastq1.empty() && hts_file.empty() && qual.empty()) // must have some quality input
                                    || (!seq.empty() && qual.empty())                    // can't provide sequence without quality
                                    || !read_file.empty()))                              // can't provide sequence list without qualities
@@ -6749,7 +6750,7 @@ int main_map(int argc, char** argv) {
         return 1;
     }
     // note: still possible that hts file types don't have quality, but have to check the file to know
-    
+
     MappingQualityMethod mapping_quality_method;
     if (method_code == 0) {
         mapping_quality_method = None;
@@ -6764,7 +6765,7 @@ int main_map(int argc, char** argv) {
         cerr << "error:[vg map] unrecognized mapping quality method command line arg '" << method_code << "'" << endl;
         return 1;
     }
-    
+
 
     // should probably disable this
     string file_name;
@@ -6880,7 +6881,7 @@ int main_map(int argc, char** argv) {
             stream::write_buffered(cout, output_buf, buffer_size);
         }
     };
-    
+
     for (int i = 0; i < thread_count; ++i) {
         Mapper* m;
         if(xindex && gcsa && lcp) {
@@ -6923,24 +6924,24 @@ int main_map(int argc, char** argv) {
 
         Alignment unaligned;
         unaligned.set_sequence(seq);
-        
+
         if (!qual.empty()) {
             unaligned.set_quality(qual);
         }
-        
+
         vector<Alignment> alignments = mapper[tid]->align_multi(unaligned, kmer_size, kmer_stride, band_width);
         if(alignments.size() == 0) {
             // If we didn't have any alignments, report the unaligned alignment
             alignments.push_back(unaligned);
         }
-        
+
 
         for(auto& alignment : alignments) {
             if (!sample_name.empty()) alignment.set_sample_name(sample_name);
             if (!read_group.empty()) alignment.set_read_group(read_group);
             if (!seq_name.empty()) alignment.set_name(seq_name);
         }
-        
+
         // Output the alignments in JSON or protobuf as appropriate.
         output_alignments(alignments);
     }
@@ -7171,7 +7172,7 @@ void help_view(char** argv) {
          << "    -A, --aln-graph GAM  add alignments from GAM to the graph" << endl
 
          << "    -q, --locus-in       input stream is Locus format" << endl
-         << "    -z, --locus-out      output stream Locus format" << endl
+         << "    -z, --locus-out      output stream Lconst thread_t& tocus format" << endl
          << "    -Q, --loci FILE      input is Locus format for use by dot output" << endl
 
          << "    -d, --dot            output dot format" << endl
@@ -7762,7 +7763,7 @@ int main_view(int argc, char** argv) {
     } else if (output_type == "vg") {
         graph->serialize_to_ostream(cout);
     } else if (output_type == "locus") {
-        
+
     } else {
         // We somehow got here with a bad output format.
         cerr << "[vg view] error: cannot save a graph in " << output_type << " format" << endl;
@@ -7882,10 +7883,10 @@ int main_deconstruct(int argc, char** argv){
 
     Deconstructor decon = Deconstructor(graph);
     if (!xg_name.empty()){
-        ifstream xg_stream(xg_name);                                                                                                                                             
-        if(!xg_stream) {                                                                                                                                                         
-            cerr << "Unable to open xg index: " << xg_name << endl;                                                                                                              
-            exit(1);                                                                                                                                                             
+        ifstream xg_stream(xg_name);
+        if(!xg_stream) {
+            cerr << "Unable to open xg index: " << xg_name << endl;
+            exit(1);
         }
 
         xg::XG* xindex = new  xg::XG(xg_stream);
@@ -7905,7 +7906,7 @@ int main_deconstruct(int argc, char** argv){
             cerr << "Done." << endl;
         }
 
-    
+
 
     // At this point, we can detect the superbubbles
 
@@ -8191,6 +8192,80 @@ void vg_help(char** argv) {
          << "  -- version       version information" << endl;
 }
 
+int main_haplo(int argc, char** argv) {
+  string xg_name;
+  string query_path_name;
+  bool output_haplo_ds = false;
+  bool print_path_names = false;
+  int c;
+  optind = 2;
+  while (true) {
+    static struct option long_options[] =
+    {
+      /* These options set a flag. */
+      {"xg-name", required_argument, 0, 'x'},
+      {"display-path-names", no_argument, 0, 'p'},
+      {"all-haplo-decomps", no_argument, 0, 's'},
+      {"display-haplo-decomp", required_argument, 0, 'c'},
+      {0, 0, 0, 0}
+    };
+
+    int option_index = 0;
+    c = getopt_long (argc, argv, "x:psc:",
+    long_options, &option_index);
+
+    /* Detect the end of the options. */
+    if (c == -1)
+    break;
+
+    switch (c)
+    {
+      case 'x':
+      xg_name = optarg;
+      break;
+
+      case 'p':
+      print_path_names = true;
+      break;
+
+      case 's':
+      output_haplo_ds = true;
+      break;
+
+      case 'c':
+      query_path_name = optarg;
+      break;
+
+      default:
+      abort ();
+    }
+  }
+
+  ifstream xg_stream(xg_name);
+  cerr << "Loading xg index " << xg_name << "..." << endl;
+  xg::XG index = xg::XG(xg_stream);
+
+  if(print_path_names){
+    cerr << "printing path names" << endl;
+    for(size_t path_rank = 1; path_rank <= index.max_path_rank(); path_rank++) {
+      cerr << path_rank << ": " << index.path_name(path_rank) << endl;
+    }
+  }
+
+  if(output_haplo_ds) {
+    cerr << "Printing haplotype decomposition stats";
+    Path path = index.path(query_path_name);
+    thread_t thread = path_to_thread_t(path);
+    cerr << "making a haplo_d... ";
+    haplo_d qhaplo = haplo_d(thread, index);
+    cerr << "computed rectangle boundaries... ";
+    qhaplo.calculate_Is(index);
+    cerr << "made whole rectangle decomposition!" << endl;
+    qhaplo.print_decomposition_stats("haplo_d_stats.csv");
+  }
+  return 0;
+}
+
 int main(int argc, char *argv[])
 {
 
@@ -8204,6 +8279,8 @@ int main(int argc, char *argv[])
     string command = argv[1];
     if (command == "construct") {
         return main_construct(argc, argv);
+    } else if (command == "haplo") {
+        return main_haplo(argc,argv);
     } else if (command == "deconstruct"){
         return main_deconstruct(argc, argv);
     } else if (command == "view") {

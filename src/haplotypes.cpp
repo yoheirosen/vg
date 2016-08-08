@@ -1,5 +1,8 @@
 #include <iostream>
 #include "haplotypes.hpp"
+#include "path.hpp"
+#include "position.hpp"
+
 
 using namespace std;
 using namespace xg;
@@ -138,6 +141,23 @@ inline XG::ThreadMapping cross_section::get_node() {
   return node;
 }
 
+thread_t path_to_thread_t(Path& path) {
+  thread_t t;
+  for(size_t i = 0; i < path.mapping_size(); i++) {
+    Mapping mapping = path.mapping(i);
+    auto pos = mapping.position();
+    XG::ThreadMapping m = {pos.node_id(), pos.is_reverse()};
+    t.push_back(m);
+  }
+  return t;
+}
+
+void decompose_and_print(const thread_t& t, XG& graph, string haplo_d_out_filename) {
+  haplo_d decomposition = haplo_d(t, graph);
+  decomposition.calculate_Is(graph);
+  decomposition.print_decomposition_stats(haplo_d_out_filename);
+}
+
 void haplo_d::print_decomposition_stats(string haplo_d_out_filename) {
   ofstream haplo_d_out (haplo_d_out_filename);
   haplo_d_out << "|A_curr| \t J \t l \t new rect?" << std::endl;
@@ -209,8 +229,6 @@ haplo_d::haplo_d(const thread_t& t, XG& graph) {
     add_rectangle = 0;
   }
 }
-
-
 
 void haplo_d::calculate_Is(XG& graph) {
   // node 0 was done in the haplo_d constructor; start at node 1
