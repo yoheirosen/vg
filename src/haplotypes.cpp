@@ -124,10 +124,15 @@ void rectangle::extend(XG::ThreadMapping next_node, XG& graph) {
     state.range_start = 0;
     state.range_end = graph.node_height(next_node);
   } else {
+    bool edge_exists = check_for_edges(graph.rank_to_id(state.current_side / 2),state.current_side % 2, next_node.node_id, next_node.is_reverse, graph);
     // Else, look at where the path goes to and apply the where_to function to
     // shrink the range down.
-    state.range_start = graph.where_to(state.current_side, state.range_start, next_side);
-    state.range_end = graph.where_to(state.current_side, state.range_end, next_side);
+    if(edge_exists) {
+      state.range_start = graph.where_to(state.current_side, state.range_start, next_side);
+      state.range_end = graph.where_to(state.current_side, state.range_end, next_side);
+    } else {
+      state.range_end = state.range_start;
+    }
   }
   state.current_side = next_side;
 }
@@ -150,6 +155,26 @@ thread_t path_to_thread_t(Path& path) {
     t.push_back(m);
   }
   return t;
+}
+
+bool check_for_edges(int64_t old_node_id, bool old_node_is_reverse, int64_t new_node_id, bool new_node_is_reverse, xg::XG& index) {
+  // What edge are we following
+  Edge edge_taken = make_edge(old_node_id, old_node_is_reverse, new_node_id, new_node_is_reverse);
+
+  // Make sure we find it
+  bool edge_found = false;
+
+  vector<Edge> edges = new_node_is_reverse ? index.edges_on_end(new_node_id) : index.edges_on_start(new_node_id);
+
+  for(auto& edge : edges) {
+    // Look at every edge in order.
+    if(edges_equivalent(edge, edge_taken)) {
+      // If we found the edge we're taking, break.
+      edge_found = true;
+      break;
+    }
+  }
+  return edge_found;
 }
 
 void decompose_and_print(const thread_t& t, XG& graph, string haplo_d_out_filename) {
@@ -177,6 +202,7 @@ haplo_d::haplo_d(const thread_t& t, XG& graph) {
   // At the leftmost node there is only one strip, so I = J
   rect.I = rect.J;
   int last_height = rect.J;
+  //cerr << "Node 0: h " << rect.J << endl;
   // Make the first cross-section at this node
   cs.push_back(cross_section(rect.J,0,t[0]));
   cs.back().S.push_back(rect);
@@ -195,16 +221,19 @@ haplo_d::haplo_d(const thread_t& t, XG& graph) {
     // Did any threads leave?
     if(last_height > rect.J) {
       add_A = 1;
+      //cerr << "J^a-1_a = " << rect.J << "; ";
     }
     // Are there any threads here which didn't come from the previous node?
     if(rect.J < new_height) {
       add_rectangle = 1;
       add_A = 1;
+      //cerr << "I^a_a " << new_height - rect.J << "; ";
     }
     // This is an entry or exit node, add a cross-section to the vector of
     // "active" nodes
     if(add_A) {
       cs.back().width = width;
+      //cerr << "Adding new A at node " << i << "; last width was " << width << endl;
       width = 0;
       cs.push_back(cross_section(new_height,i,t[i]));
     }
