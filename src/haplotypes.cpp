@@ -191,7 +191,7 @@ void haplo_d::print_decomposition_stats(string haplo_d_out_filename) {
         << "\t" << (cs[0].S[0].prev == &empty_rect) << "\n";
   for(int i = 1; i < cs.size(); i++) {
     int joiners = (cs[i].S[0].prev == &empty_rect) ? cs[i].S[0].J : 0;
-    haplo_d_out << cs[i].S.size() << "\t" << cs[i].height << "\t" << joiners << "\t" << cs[i-1].height - joiners - cs[i].height << "\t" << cs[i].width
+    haplo_d_out << cs[i].S.size() << "\t" << cs[i].height << "\t" << joiners << "\t" << cs[i-1].height + joiners - cs[i].height << "\t" << cs[i].width
           << "\t" << (cs[i].S[0].prev == &empty_rect) << "\n";
     if(cs[i].S.size() > Acurrmax) {Acurrmax = cs[i].S.size();}
   }
