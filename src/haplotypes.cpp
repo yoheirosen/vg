@@ -185,14 +185,17 @@ void decompose_and_print(const thread_t& t, XG& graph, string haplo_d_out_filena
 
 void haplo_d::print_decomposition_stats(string haplo_d_out_filename) {
   ofstream haplo_d_out (haplo_d_out_filename);
-  haplo_d_out << "|A_curr| \t J \t l \t new rect?" << std::endl;
+  cerr << "Printing, format is: " << "|A_curr| \t J^a_a \t joiners \t leavers \t length \t new rect?" << std::endl;
   int Acurrmax = 0;
-  for(int i = 0; i < cs.size(); i++) {
-    haplo_d_out << cs[i].S.size() << "\t" << cs[i].height << "\t" << cs[i].width
+  haplo_d_out << cs[0].S.size() << "\t" << cs[0].height << "\t" << cs[0].height << "\t" << 0 << "\t" << cs[0].width
+        << "\t" << (cs[0].S[0].prev == &empty_rect) << "\n";
+  for(int i = 1; i < cs.size(); i++) {
+    int joiners = (cs[i].S[0].prev == &empty_rect) ? cs[i].S[0].J : 0;
+    haplo_d_out << cs[i].S.size() << "\t" << cs[i].height << "\t" << joiners << "\t" << cs[i-1].height - joiners - cs[i].height << "\t" << cs[i].width
           << "\t" << (cs[i].S[0].prev == &empty_rect) << "\n";
     if(cs[i].S.size() > Acurrmax) {Acurrmax = cs[i].S.size();}
   }
-  haplo_d_out << "|A_curr|^max = " << Acurrmax;
+  cerr << "|A_curr|^max = " << Acurrmax;
   haplo_d_out.close();
 }
 
