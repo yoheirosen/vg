@@ -8192,9 +8192,20 @@ void vg_help(char** argv) {
          << "  -- version       version information" << endl;
 }
 
+void help_haplo(char** argv) {
+    cerr << "usage: " << argv[0] << " construct [options] >new.vg" << endl
+         << "options:" << endl
+         << "    -x, --xg-name FILE         input xg index" << endl
+         << "    -n, --display-path-names   lists path in xg by name" << endl
+         << "    -d, --haplo-decomp         writes statistics for recombination rectangle decomposition to csv" << endl
+         << "    -q, --query-haplo NAME     query haplotype (from among named paths)" << endl
+         << "    -o, --output-csv FILE      file to which to output rectangle decomposition stats" << endl;
+}
+
 int main_haplo(int argc, char** argv) {
   string xg_name;
   string query_path_name;
+  string output_csv;
   bool output_haplo_ds = false;
   bool print_path_names = false;
   int c;
@@ -8204,14 +8215,15 @@ int main_haplo(int argc, char** argv) {
     {
       /* These options set a flag. */
       {"xg-name", required_argument, 0, 'x'},
-      {"display-path-names", no_argument, 0, 'p'},
-      {"all-haplo-decomps", no_argument, 0, 's'},
-      {"display-haplo-decomp", required_argument, 0, 'c'},
+      {"display-path-names", no_argument, 0, 'n'},
+      {"haplo-decomp", no_argument, 0, 'd'},
+      {"query-haplo", required_argument, 0, 'q'},
+      {"output-csv", required_argument, 0, 'o'},
       {0, 0, 0, 0}
     };
 
     int option_index = 0;
-    c = getopt_long (argc, argv, "x:psc:",
+    c = getopt_long (argc, argv, "x:ndq:o:h",
     long_options, &option_index);
 
     /* Detect the end of the options. */
@@ -8224,20 +8236,30 @@ int main_haplo(int argc, char** argv) {
       xg_name = optarg;
       break;
 
-      case 'p':
+      case 'n':
       print_path_names = true;
       break;
 
-      case 's':
+      case 'd':
       output_haplo_ds = true;
       break;
 
-      case 'c':
+      case 'q':
       query_path_name = optarg;
       break;
 
+      case 'o':
+      output_csv = optarg;
+      break;
+
+      case '?':
+      case 'h':
+          help_haplo(argv);
+          return 1;
+
       default:
-      abort ();
+          help_haplo(argv);
+          abort();
     }
   }
 
@@ -8253,15 +8275,15 @@ int main_haplo(int argc, char** argv) {
   }
 
   if(output_haplo_ds) {
-    cerr << "Printing haplotype decomposition stats";
+    cerr << "Printing haplotype decomposition stats" << endl;
     Path path = index.path(query_path_name);
     thread_t thread = path_to_thread_t(path);
-    cerr << "making a haplo_d... ";
+    cerr << "making a haplo_d... " << endl;
     haplo_d qhaplo = haplo_d(thread, index);
-    cerr << "computed rectangle boundaries... ";
+    cerr << "computed rectangle boundaries... " << endl;
     qhaplo.calculate_Is(index);
     cerr << "made whole rectangle decomposition!" << endl;
-    qhaplo.print_decomposition_stats("haplo_d_stats.csv");
+    qhaplo.print_decomposition_stats(output_csv);
   }
   return 0;
 }
