@@ -205,8 +205,6 @@ haplo_d::haplo_d(const thread_t& t, XG& graph) {
   // At the leftmost node there is only one strip, so I = J
   rect.I = rect.J;
   int last_height = rect.J;
-  //cerr << "Node 0: h " << rect.J << endl;
-  // Make the first cross-section at this node
   cs.push_back(cross_section(rect.J,0,t[0]));
   cs.back().S.push_back(rect);
   // empty_rect has R = 0
@@ -224,7 +222,6 @@ haplo_d::haplo_d(const thread_t& t, XG& graph) {
     // Did any threads leave?
     if(last_height > rect.J) {
       add_A = 1;
-      //cerr << "J^a-1_a = " << rect.J << "; ";
     }
     // Are there any threads here which didn't come from the previous node?
     if(rect.J < new_height) {
@@ -253,8 +250,10 @@ haplo_d::haplo_d(const thread_t& t, XG& graph) {
       cs.back().S.back().prev = &empty_rect;
     }
     if(add_A) {
-      cs.back().S.push_back(rect);
-      cs.back().S.back().prev = &(cs.end()[-2].S[0]);
+      if(rect.J > 0) {
+        cs.back().S.push_back(rect);
+        cs.back().S.back().prev = &(cs.end()[-2].S[0]);
+      }
     }
     last_height = new_height;
     add_A = 0;
