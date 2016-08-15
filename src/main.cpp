@@ -8198,6 +8198,7 @@ void help_haplo(char** argv) {
          << "    -x, --xg-name FILE         input xg index" << endl
          << "    -n, --display-path-names   lists path in xg by name" << endl
          << "    -d, --haplo-decomp         writes statistics for recombination rectangle decomposition to csv" << endl
+         << "    -A, --all-haplo-decomp     writes statistics for recombination rectangle decomposition of every embedded haplotype to csv" << endl
          << "    -q, --query-haplo NAME     query haplotype (from among named paths)" << endl
          << "    -o, --output-csv FILE      file to which to output rectangle decomposition stats" << endl;
 }
@@ -8207,6 +8208,7 @@ int main_haplo(int argc, char** argv) {
   string query_path_name;
   string output_csv;
   bool output_haplo_ds = false;
+  bool output_all_haplo_ds = false;
   bool print_path_names = false;
   int c;
   optind = 2;
@@ -8217,13 +8219,14 @@ int main_haplo(int argc, char** argv) {
       {"xg-name", required_argument, 0, 'x'},
       {"display-path-names", no_argument, 0, 'n'},
       {"haplo-decomp", no_argument, 0, 'd'},
+      {"all-haplo-decomp", no_argument, 0, 'A'},
       {"query-haplo", required_argument, 0, 'q'},
       {"output-csv", required_argument, 0, 'o'},
       {0, 0, 0, 0}
     };
 
     int option_index = 0;
-    c = getopt_long (argc, argv, "x:ndq:o:h",
+    c = getopt_long (argc, argv, "x:ndAq:o:h",
     long_options, &option_index);
 
     /* Detect the end of the options. */
@@ -8242,6 +8245,10 @@ int main_haplo(int argc, char** argv) {
 
       case 'd':
       output_haplo_ds = true;
+      break;
+
+      case 'A':
+      output_all_haplo_ds = true;
       break;
 
       case 'q':
@@ -8284,6 +8291,11 @@ int main_haplo(int argc, char** argv) {
     qhaplo.calculate_Is(index);
     cerr << "made whole rectangle decomposition!" << endl;
     qhaplo.print_decomposition_stats(output_csv);
+  }
+
+  if(output_all_haplo_ds) {
+    output_csv = "."+output_csv;
+    extract_threads_into_haplo_d(index, output_csv);
   }
   return 0;
 }

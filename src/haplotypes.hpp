@@ -95,6 +95,8 @@ public:
 
 thread_t path_to_thread_t(vg::Path& path);
 
+void extract_threads_into_haplo_d(xg::XG& index, string output_csv);
+
 bool check_for_edges(int64_t old_node_id, bool old_node_is_reverse, int64_t new_node_id, bool new_node_is_reverse, xg::XG& index);
 
 #endif

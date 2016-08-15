@@ -185,7 +185,6 @@ void decompose_and_print(const thread_t& t, XG& graph, string haplo_d_out_filena
 
 void haplo_d::print_decomposition_stats(string haplo_d_out_filename) {
   ofstream haplo_d_out (haplo_d_out_filename);
-  cerr << "Printing, format is: " << "|A_curr| \t J^a_a \t joiners \t leavers \t length \t new rect?" << std::endl;
   int Acurrmax = 0;
   haplo_d_out << cs[0].S.size() << "\t" << cs[0].height << "\t" << cs[0].height << "\t" << 0 << "\t" << cs[0].width
         << "\t" << (cs[0].S[0].prev == &empty_rect) << "\n";
@@ -195,8 +194,65 @@ void haplo_d::print_decomposition_stats(string haplo_d_out_filename) {
           << "\t" << (cs[i].S[0].prev == &empty_rect) << "\n";
     if(cs[i].S.size() > Acurrmax) {Acurrmax = cs[i].S.size();}
   }
-  cerr << "|A_curr|^max = " << Acurrmax;
+  cerr << "|A_curr|^max = " << Acurrmax << "; length = " << cs.size() << endl;
   haplo_d_out.close();
+}
+
+void extract_threads_into_haplo_d(xg::XG& index, string output_csv) {
+  //ts_iv is a vector of the # of threads starting at each side
+  for(int64_t i = 1; i < index.ts_iv.size(); i++) {
+    // Skip it if no threads start at it
+    if(index.ts_iv[i] == 0) {
+        continue;
+    }
+    // If there are threads starting,
+    for(int64_t j = 0; j < index.ts_iv[i]; j++) {
+      // For every thread starting there
+      thread_t path;
+      int64_t side = i;
+      int64_t offset = j;
+      while(true) {
+          // Unpack the side into a node traversal
+          xg::XG::ThreadMapping m = {index.rank_to_id(side / 2), (bool) (side % 2)};
+          // Add the mapping to the thread
+          path.push_back(m);
+          // Work out where we go:
+
+          // - What edge of the available edges do we take?
+          int64_t edge_index = index.bs_get(side, offset);
+          // If we find a separator, we're very broken.
+          assert(edge_index != index.BS_SEPARATOR);
+          // Does the path end?
+          if(edge_index == index.BS_NULL) {
+              // Path ends here.
+              break;
+          } else {
+              // If we've got an edge, convert to an actual edge index
+              edge_index -= 2;
+          }
+
+          // We also should not have negative edges.
+          assert(edge_index >= 0);
+          // Look at the edges we could have taken next
+          vector<Edge> edges_out = side % 2 ? index.edges_on_start(index.rank_to_id(side / 2)) : index.edges_on_end(index.rank_to_id(side / 2));
+          assert(edge_index < edges_out.size());
+          Edge& taken = edges_out[edge_index];
+          // Follow the edge
+          int64_t other_node = taken.from() == index.rank_to_id(side / 2) ? taken.to() : taken.from();
+          bool other_orientation = (side % 2) != taken.from_start() != taken.to_end();
+          // Get the side
+          int64_t other_side = index.id_to_rank(other_node) * 2 + other_orientation;
+          // Go there with where_to
+          offset = index.where_to(side, offset, other_side);
+          side = other_side;
+          // Continue the process from this new side
+      }
+      // We have a thread_t to follow; let's make a haplo_d
+      haplo_d qhaplo = haplo_d(path, index);
+      qhaplo.calculate_Is(index);
+      qhaplo.print_decomposition_stats(to_string(i)+"_"+to_string(j)+output_csv);
+    }
+  }
 }
 
 haplo_d::haplo_d(const thread_t& t, XG& graph) {
@@ -277,7 +333,7 @@ haplo_d::haplo_d(const thread_t& t, XG& graph) {
 void haplo_d::calculate_Is(XG& graph) {
   // node 0 was done in the haplo_d constructor; start at node 1
   for(int b = 1; b < cs.size(); b++) {
-    if(cs[b].S.size != 0) {
+    if(cs[b].S.size() != 0) {
       XG::ThreadMapping next_node = cs[b].get_node();
       bool nonempty_J = (cs[b].S.back().J > 0);
       if(nonempty_J) {
