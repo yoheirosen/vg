@@ -183,22 +183,40 @@ void decompose_and_print(const thread_t& t, XG& graph, string haplo_d_out_filena
   decomposition.print_decomposition_stats(haplo_d_out_filename);
 }
 
-void haplo_d::print_decomposition_stats(string haplo_d_out_filename) {
+void haplo_d::print_decomposition(string haplo_d_out_filename) {
   ofstream haplo_d_out (haplo_d_out_filename);
-  int Acurrmax = 0;
-  haplo_d_out << cs[0].S.size() << "\t" << cs[0].height << "\t" << cs[0].height << "\t" << 0 << "\t" << cs[0].width
-        << "\t" << (cs[0].S[0].prev == &empty_rect) << "\n";
   for(int i = 1; i < cs.size(); i++) {
-    int joiners = (cs[i].S[0].prev == &empty_rect) ? cs[i].S[0].J : 0;
-    haplo_d_out << cs[i].S.size() << "\t" << cs[i].height << "\t" << joiners << "\t" << cs[i-1].height + joiners - cs[i].height << "\t" << cs[i].width
-          << "\t" << (cs[i].S[0].prev == &empty_rect) << "\n";
-    if(cs[i].S.size() > Acurrmax) {Acurrmax = cs[i].S.size();}
+    for(int j = 0; j < cs[i].S.size(); j++) {
+      haplo_d_out << cs[i].S[j].J << "\t";
+    }
+    haplo_d_out << endl;
   }
-  cerr << "|A_curr|^max = " << Acurrmax << "; length = " << cs.size() << endl;
   haplo_d_out.close();
 }
 
-void extract_threads_into_haplo_d(xg::XG& index, string output_csv) {
+pair<int,int> haplo_d::print_decomposition_stats(string haplo_d_out_filename) {
+  ofstream haplo_d_out (haplo_d_out_filename);
+  int Acurrmax = 0;
+  int tot_length = 0;
+  haplo_d_out << cs[0].S.size() << "\t" << cs[0].height << "\t" << cs[0].height << "\t" << 0 << "\t" << cs[0].width
+        << "\t" << (cs[0].S[0].prev == &empty_rect) << "\n";
+  for(int i = 1; i < cs.size(); i++) {
+    int joiners = (cs[i].S[0].prev == &empty_rect) ? cs[i].S[0].I : 0;
+    haplo_d_out << cs[i].S.size() << "\t" << cs[i].height << "\t" << joiners << "\t" << cs[i-1].height + joiners - cs[i].height << "\t" << cs[i].width
+          << "\t" << (cs[i].S[0].prev == &empty_rect) << "\n";
+    if(cs[i].S.size() > Acurrmax) {Acurrmax = cs[i].S.size();}
+    tot_length += cs[i].width;
+  }
+  cerr << "|A_curr|^max = " << Acurrmax << "; length = " << cs.size() << endl;
+  haplo_d_out.close();
+  pair<int,int> return_val;
+  return_val.first = Acurrmax;
+  return_val.second = tot_length;
+  return return_val;
+}
+
+void extract_threads_into_haplo_ds(xg::XG& index, string output_path) {
+  ofstream all_thread_stats (output_path+"summary.csv");
   //ts_iv is a vector of the # of threads starting at each side
   for(int64_t i = 1; i < index.ts_iv.size(); i++) {
     // Skip it if no threads start at it
@@ -230,7 +248,6 @@ void extract_threads_into_haplo_d(xg::XG& index, string output_csv) {
               // If we've got an edge, convert to an actual edge index
               edge_index -= 2;
           }
-
           // We also should not have negative edges.
           assert(edge_index >= 0);
           // Look at the edges we could have taken next
@@ -250,9 +267,12 @@ void extract_threads_into_haplo_d(xg::XG& index, string output_csv) {
       // We have a thread_t to follow; let's make a haplo_d
       haplo_d qhaplo = haplo_d(path, index);
       qhaplo.calculate_Is(index);
-      qhaplo.print_decomposition_stats(to_string(i)+"_"+to_string(j)+output_csv);
+      pair<int,int> hd_output = qhaplo.print_decomposition_stats(output_path+to_string(i)+"_"+to_string(j)+".stats.csv");
+      qhaplo.print_decomposition();
+      all_thread_stats << i << ", " << j << "\t" << hd_output.first << "\t" << hd_output.second << endl;
     }
   }
+  all_thread_stats.close();
 }
 
 haplo_d::haplo_d(const thread_t& t, XG& graph) {
@@ -333,34 +353,36 @@ haplo_d::haplo_d(const thread_t& t, XG& graph) {
 void haplo_d::calculate_Is(XG& graph) {
   // node 0 was done in the haplo_d constructor; start at node 1
   for(int b = 1; b < cs.size(); b++) {
+    // make sure that there is at least one rectangle here
     if(cs[b].S.size() != 0) {
+      // get side and orientation of the next element in our query thread_t
       XG::ThreadMapping next_node = cs[b].get_node();
+      // if J = 0 for a rectangle, then J must be 0 for all older rectangles
       bool nonempty_J = (cs[b].S.back().J > 0);
       if(nonempty_J) {
-        bool change_in_J = 1;
         int new_J;
-        int old_J;
+        // start at a = 1 since the haplo_d initializer handles a = 0
         for(int a = 1; a < cs[b-1].S.size(); a++) {
-          if(change_in_J) {
-            cs[b].S.push_back(cs[b-1].S[a]);
+          rectangle new_rect = cs[b-1].S[a];
+          new_J = new_rect.get_next_J(next_node,graph);
+          new_rect.J = new_J;
+          //cs[b].S.end()[-2].I = cs[b].S.end()[-2].J - new_J;
+          if(new_J != 0) {
+            cs[b].S.push_back(new_rect);
             cs[b].S.back().prev = &cs[b-1].S[a];
-            old_J = cs[b].S.back().J;
-            new_J = cs[b].S.back().get_next_J(next_node,graph);
-            cs[b].S.end()[-2].I = cs[b].S.end()[-2].J - new_J;
-            if(old_J == new_J) {
-              change_in_J = 0;
-            } else if(new_J == 0) {
-              change_in_J = 0;
-              nonempty_J = 0;
-              cs[b].S.pop_back();
-            }
-          } else if(nonempty_J) {
-            cs[b].S.push_back(cs[b-1].S[a]);
-            cs[b].S.back().prev = &cs[b-1].S[a];
+          } else {
+            // don't add rectangles where J = 0
+            break;
           }
         }
       } else {
+        // this shouldn't be here
         cs[b].S.pop_back();
+      }
+      if(cs[b].S.size() > 2) {
+        for(int a = 1; a < cs[b].S.size() - 1; a++) {
+          cs[b].S[a-1].I = cs[b].S[a-1].J - cs[b].S[a].J;
+        }
       }
       cs[b].S.back().I = cs[b].S.back().J;
     }

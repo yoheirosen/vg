@@ -8200,13 +8200,13 @@ void help_haplo(char** argv) {
          << "    -d, --haplo-decomp         writes statistics for recombination rectangle decomposition to csv" << endl
          << "    -A, --all-haplo-decomp     writes statistics for recombination rectangle decomposition of every embedded haplotype to csv" << endl
          << "    -q, --query-haplo NAME     query haplotype (from among named paths)" << endl
-         << "    -o, --output-csv FILE      file to which to output rectangle decomposition stats" << endl;
+         << "    -o, --output-path PATH     folder to which to output rectangle decomposition stats" << endl;
 }
 
 int main_haplo(int argc, char** argv) {
   string xg_name;
   string query_path_name;
-  string output_csv;
+  string output_path;
   bool output_haplo_ds = false;
   bool output_all_haplo_ds = false;
   bool print_path_names = false;
@@ -8221,7 +8221,7 @@ int main_haplo(int argc, char** argv) {
       {"haplo-decomp", no_argument, 0, 'd'},
       {"all-haplo-decomp", no_argument, 0, 'A'},
       {"query-haplo", required_argument, 0, 'q'},
-      {"output-csv", required_argument, 0, 'o'},
+      {"output-path", required_argument, 0, 'o'},
       {0, 0, 0, 0}
     };
 
@@ -8256,7 +8256,7 @@ int main_haplo(int argc, char** argv) {
       break;
 
       case 'o':
-      output_csv = optarg;
+      output_path = optarg;
       break;
 
       case '?':
@@ -8290,12 +8290,11 @@ int main_haplo(int argc, char** argv) {
     cerr << "computed rectangle boundaries... " << endl;
     qhaplo.calculate_Is(index);
     cerr << "made whole rectangle decomposition!" << endl;
-    qhaplo.print_decomposition_stats(output_csv);
+    qhaplo.print_decomposition_stats(output_path);
   }
 
   if(output_all_haplo_ds) {
-    output_csv = "."+output_csv;
-    extract_threads_into_haplo_d(index, output_csv);
+    extract_threads_into_haplo_ds(index, output_path);
   }
   return 0;
 }

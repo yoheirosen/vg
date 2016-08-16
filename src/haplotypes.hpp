@@ -90,12 +90,13 @@ public:
   // terms of node history) 1 or 2 rectangles at each node
   void calculate_Is(xg::XG& graph);
   double probability(double recombination_penalty);
-  void print_decomposition_stats(string haplo_d_out_filename);
+  pair<int,int> print_decomposition_stats(string haplo_d_out_filename);
+  void haplo_d::print_decomposition(string haplo_d_out_filename);
 };
 
 thread_t path_to_thread_t(vg::Path& path);
 
-void extract_threads_into_haplo_d(xg::XG& index, string output_csv);
+void extract_threads_into_haplo_ds(xg::XG& index, string output_path);
 
 bool check_for_edges(int64_t old_node_id, bool old_node_is_reverse, int64_t new_node_id, bool new_node_is_reverse, xg::XG& index);
 
