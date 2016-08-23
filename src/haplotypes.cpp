@@ -215,10 +215,10 @@ pair<int,int> haplo_d::print_decomposition_stats(string haplo_d_out_filename) {
   return return_val;
 }
 
-void extract_threads_into_haplo_ds(xg::XG& index, string output_path) {
+void extract_threads_into_haplo_ds(xg::XG& index, string output_path, int64_t start_node) {
   ofstream all_thread_stats (output_path+"summary.csv");
   //ts_iv is a vector of the # of threads starting at each side
-  for(int64_t i = 1; i < index.ts_iv.size(); i++) {
+  for(int64_t i = start_node; i < index.ts_iv.size(); i++) {
     // Skip it if no threads start at it
     if(index.ts_iv[i] == 0) {
         continue;

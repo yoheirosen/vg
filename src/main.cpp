@@ -8207,6 +8207,7 @@ int main_haplo(int argc, char** argv) {
   string xg_name;
   string query_path_name;
   string output_path;
+  string start_node = "1";
   bool output_haplo_ds = false;
   bool output_all_haplo_ds = false;
   bool print_path_names = false;
@@ -8222,11 +8223,12 @@ int main_haplo(int argc, char** argv) {
       {"all-haplo-decomp", no_argument, 0, 'A'},
       {"query-haplo", required_argument, 0, 'q'},
       {"output-path", required_argument, 0, 'o'},
+      {"start-node", required_argument, 0, 's'},
       {0, 0, 0, 0}
     };
 
     int option_index = 0;
-    c = getopt_long (argc, argv, "x:ndAq:o:h",
+    c = getopt_long (argc, argv, "x:ndAq:o:s:h",
     long_options, &option_index);
 
     /* Detect the end of the options. */
@@ -8257,6 +8259,10 @@ int main_haplo(int argc, char** argv) {
 
       case 'o':
       output_path = optarg;
+      break;
+
+      case 's':
+      start_node = optarg;
       break;
 
       case '?':
@@ -8294,7 +8300,8 @@ int main_haplo(int argc, char** argv) {
   }
 
   if(output_all_haplo_ds) {
-    extract_threads_into_haplo_ds(index, output_path);
+    int64_t start_node_as_int = atoi(start_node);
+    extract_threads_into_haplo_ds(index, output_path,start_node_as_int);
   }
   return 0;
 }
