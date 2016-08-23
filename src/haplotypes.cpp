@@ -268,7 +268,7 @@ void extract_threads_into_haplo_ds(xg::XG& index, string output_path) {
       haplo_d qhaplo = haplo_d(path, index);
       qhaplo.calculate_Is(index);
       pair<int,int> hd_output = qhaplo.print_decomposition_stats(output_path+to_string(i)+"_"+to_string(j)+".stats.csv");
-      qhaplo.print_decomposition();
+      qhaplo.print_decomposition(output_path+to_string(i)+"_"+to_string(j)+".structure.csv");
       all_thread_stats << i << ", " << j << "\t" << hd_output.first << "\t" << hd_output.second << endl;
     }
   }
@@ -368,6 +368,11 @@ void haplo_d::calculate_Is(XG& graph) {
           new_rect.J = new_J;
           //cs[b].S.end()[-2].I = cs[b].S.end()[-2].J - new_J;
           if(new_J != 0) {
+            if(new_J == cs[b].S.back().J) {
+              cs[b].S.pop_back();
+            } else {
+              cs[b].S.back().I = cs[b].S.back().J - new_J;
+            }
             cs[b].S.push_back(new_rect);
             cs[b].S.back().prev = &cs[b-1].S[a];
           } else {
@@ -378,11 +383,6 @@ void haplo_d::calculate_Is(XG& graph) {
       } else {
         // this shouldn't be here
         cs[b].S.pop_back();
-      }
-      if(cs[b].S.size() > 2) {
-        for(int a = 1; a < cs[b].S.size() - 1; a++) {
-          cs[b].S[a-1].I = cs[b].S[a-1].J - cs[b].S[a].J;
-        }
       }
       cs[b].S.back().I = cs[b].S.back().J;
     }
