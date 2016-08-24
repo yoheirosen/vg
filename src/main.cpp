@@ -8207,7 +8207,7 @@ int main_haplo(int argc, char** argv) {
   string xg_name;
   string query_path_name;
   string output_path;
-  string start_node = "1";
+  int64_t start_node = 1;
   bool output_haplo_ds = false;
   bool output_all_haplo_ds = false;
   bool print_path_names = false;
@@ -8262,7 +8262,7 @@ int main_haplo(int argc, char** argv) {
       break;
 
       case 's':
-      start_node = optarg;
+      start_node = atoi(optarg);
       break;
 
       case '?':
@@ -8300,8 +8300,7 @@ int main_haplo(int argc, char** argv) {
   }
 
   if(output_all_haplo_ds) {
-    int64_t start_node_as_int = atoi(start_node);
-    extract_threads_into_haplo_ds(index, output_path,start_node_as_int);
+    extract_threads_into_haplo_ds(index, output_path,start_node);
   }
   return 0;
 }
