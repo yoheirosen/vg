@@ -8193,24 +8193,32 @@ void vg_help(char** argv) {
 }
 
 void help_haplo(char** argv) {
-    cerr << "usage: " << argv[0] << " construct [options] >new.vg" << endl
+    cerr << "usage: " << argv[0] << " <command> [options]" << endl
          << "options:" << endl
          << "    -x, --xg-name FILE         input xg index" << endl
          << "    -n, --display-path-names   lists path in xg by name" << endl
-         << "    -d, --haplo-decomp         writes statistics for recombination rectangle decomposition to csv" << endl
-         << "    -A, --all-haplo-decomp     writes statistics for recombination rectangle decomposition of every embedded haplotype to csv" << endl
-         << "    -q, --query-haplo NAME     query haplotype (from among named paths)" << endl
-         << "    -o, --output-path PATH     folder to which to output rectangle decomposition stats" << endl;
+         << "    -l, --path_labels PATH     lists node labels for path specified by PATH" << endl
+         << "    -o, --output-path PATH     folder to which to output statistics" << endl
+         << "    -q, --query-haplo PATH     outputs statistics for PATH" << endl
+         << "    -A, --all-haplos           outputs statistics for all paths in xg index" << endl
+         << "    -s, --start-node node      node (in xg index) at which to start assessment of whole xg index"
+         << "    -e, --end-node node        node (in xg index) at which to end assessment of whole xg index, inclusive"
+         << "    -g, --graphical            output a (non-compact) array showing all strips" << endl;
 }
 
 int main_haplo(int argc, char** argv) {
   string xg_name;
   string query_path_name;
-  string output_path;
+  // directory to output sets of csv files giving statistics for assessments
+  string output_directory;
   int64_t start_node = 1;
-  bool output_haplo_ds = false;
-  bool output_all_haplo_ds = false;
+  int64_t end_node = -1;
   bool print_path_names = false;
+  bool print_path_node_labels = false;
+  bool generate_single_haplo_d_stats = false;
+  bool generate_all_haplo_d_stats = false;
+  bool graphical_deconstructions = false;
+
   int c;
   optind = 2;
   while (true) {
@@ -8220,15 +8228,17 @@ int main_haplo(int argc, char** argv) {
       {"xg-name", required_argument, 0, 'x'},
       {"display-path-names", no_argument, 0, 'n'},
       {"haplo-decomp", no_argument, 0, 'd'},
-      {"all-haplo-decomp", no_argument, 0, 'A'},
+      {"all-haplos", no_argument, 0, 'A'},
       {"query-haplo", required_argument, 0, 'q'},
       {"output-path", required_argument, 0, 'o'},
       {"start-node", required_argument, 0, 's'},
+      {"path-labels", required_argument, 0, 'l'},
+      {"graphical", no_argument, 0, 'g'},
       {0, 0, 0, 0}
     };
 
     int option_index = 0;
-    c = getopt_long (argc, argv, "x:ndAq:o:s:h",
+    c = getopt_long (argc, argv, "x:ndAq:o:s:l:gh",
     long_options, &option_index);
 
     /* Detect the end of the options. */
@@ -8245,12 +8255,17 @@ int main_haplo(int argc, char** argv) {
       print_path_names = true;
       break;
 
+      case 'l':
+      print_path_node_labels = true;
+      query_path_name = atoi(optarg);
+      break;
+
       case 'd':
-      output_haplo_ds = true;
+      generate_single_haplo_d_stats = true;
       break;
 
       case 'A':
-      output_all_haplo_ds = true;
+      generate_all_haplo_d_stats = true;
       break;
 
       case 'q':
@@ -8258,11 +8273,19 @@ int main_haplo(int argc, char** argv) {
       break;
 
       case 'o':
-      output_path = optarg;
+      output_directory = optarg;
       break;
 
       case 's':
       start_node = atoi(optarg);
+      break;
+
+      case 'e':
+      end_node = atoi(optarg);
+      break;
+
+      case 'g':
+      graphical_deconstructions = true;
       break;
 
       case '?':
@@ -8277,30 +8300,30 @@ int main_haplo(int argc, char** argv) {
   }
 
   ifstream xg_stream(xg_name);
-  cerr << "Loading xg index " << xg_name << "..." << endl;
+  cerr << "Loading xg index " << xg_name << endl;
   xg::XG index = xg::XG(xg_stream);
 
   if(print_path_names){
-    cerr << "printing path names" << endl;
+    cerr << "Printing path names:" << endl;
     for(size_t path_rank = 1; path_rank <= index.max_path_rank(); path_rank++) {
       cerr << path_rank << ": " << index.path_name(path_rank) << endl;
     }
   }
 
-  if(output_haplo_ds) {
-    cerr << "Printing haplotype decomposition stats" << endl;
+  if(generate_single_haplo_d_stats) {
     Path path = index.path(query_path_name);
     thread_t thread = path_to_thread_t(path);
-    cerr << "making a haplo_d... " << endl;
-    haplo_d qhaplo = haplo_d(thread, index);
-    cerr << "computed rectangle boundaries... " << endl;
-    qhaplo.calculate_Is(index);
-    cerr << "made whole rectangle decomposition!" << endl;
-    qhaplo.print_decomposition_stats(output_path);
+    cerr << "Building the haplotype decomposition A-set for path " << query_path_name << endl;
+    haplo_d h = haplo_d(thread, index);
+    cerr << "Computed rectangle boundaries" << endl;
+    h.calculate_Is(index);
+    cerr << "Made whole rectangle decomposition!" << endl;
+    h.print_decomposition_stats(output_directory+query_path_name+".stats.csv");
+    h.unfold_rectangles(output_directory+query_path_name+".picture.csv");
   }
 
-  if(output_all_haplo_ds) {
-    extract_threads_into_haplo_ds(index, output_path,start_node);
+  if(generate_all_haplo_d_stats) {
+    extract_threads_into_haplo_ds(index, output_directory, start_node, end_node, graphical_deconstructions);
   }
   return 0;
 }

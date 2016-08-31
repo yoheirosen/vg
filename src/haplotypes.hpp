@@ -51,6 +51,7 @@ public:
   ~rectangle(void) {};
   // Pointer to the rectangle in the same strip in the previous cross-section
   rectangle* prev = nullptr;
+  rectangle* next = nullptr;
   int J = 0;
   int I = 0;
   double R = 0;
@@ -90,13 +91,28 @@ public:
   // terms of node history) 1 or 2 rectangles at each node
   void calculate_Is(xg::XG& graph);
   double probability(double recombination_penalty);
-  pair<int,int> print_decomposition_stats(string haplo_d_out_filename);
-  void print_decomposition(string haplo_d_out_filename);
+  pair<int,int> print_decomposition_stats(string output_path);
+  void print_decomposition(string output_path);
+
+  // We want to make a big array where rows are strips and cells are rectangles'
+  // I-values
+
+  // This array will be relatively sparse since it will hold all-zero entries
+  // prior to strips joining our query haplotype and all-one entries after. This
+  // is for output to R or a similar program for visualization; haplo_d entities
+  // as implemented are more compact but not easily human-readable
+  void unfold_rectangles(string output_path);
 };
 
 thread_t path_to_thread_t(vg::Path& path);
 
-void extract_threads_into_haplo_ds(xg::XG& index, string output_path, int64_t start_node);
+// A function to take an xg index and extract all of its embedded threads into
+// haplo_ds. This is SLOW to run to completion since there are in general tons
+// of embededded threads in a haplo_d
+void extract_threads_into_haplo_ds(xg::XG& index, string output_path, int64_t start_node, int64_t end_node, bool make_graph);
+void decompose_and_print(const thread_t& t, xg::XG& graph, string output_path);
+
+
 
 bool check_for_edges(int64_t old_node_id, bool old_node_is_reverse, int64_t new_node_id, bool new_node_is_reverse, xg::XG& index);
 
