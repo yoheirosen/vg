@@ -188,32 +188,42 @@ void decompose_and_print(const thread_t& t, XG& graph, string output_path) {
 void haplo_d::unfold_rectangles(string output_path) {
   ofstream haplo_d_out (output_path);
   int norm_A = cs.size();
-
   // Scan through the haplo_d and record where initial rectangles of strips lie
-  vector<pair<int,rectangle*>> start_nodes;
+  vector<pair<int,int>> start_nodes;
   for(int i = 0; i < cs.size(); i++) {
     for(int j = 0; j < cs[i].S.size(); j++) {
-      if(cs[i].S[j].prev == &empty_rect) {
-        start_nodes.push_back(make_pair(i,&(cs[i].S[j])));
+      if(cs[i].S[j].prev == -1) {
+        start_nodes.push_back(make_pair(i,j));
+        break; // You can't have more than one "starting" rectangle
       }
     }
   }
+  cerr << start_nodes.size() << " start nodes" << endl;
   // Iterate through all initial nodes and build the strips in a row of the
   // "rectangles" array
-  int rectangles[start_nodes.size()][norm_A];
+  sort(start_nodes.begin(),start_nodes.end());
+  vector<vector<int>> rectangles(start_nodes.size(),vector<int>());
   for(int i = 0; i < start_nodes.size(); i++) {
-    rectangle* current_rect = start_nodes[i].second;
-    int j = 0;
-    while(current_rect != &empty_rect) {
-      rectangles[i][start_nodes[i].first + j] = start_nodes[i].second->I;
-      j++;
-      current_rect = current_rect->next;
+    int current_rect = start_nodes[i].second;
+    cerr << "i = " << i << " current_rect = " << current_rect;
+    while(current_rect != -1) {
+      //TODO rectangles[i].push_back(current_rect->I);
+      //TODO cerr << " J = " << current_rect->J << endl;
+      //TODOcurrent_rect = current_rect->next;
+      //TODOcerr << "current_rect = " << current_rect << " |S|" << cs[start_nodes[i].first].S.size();
     }
+    cerr << "OK!!";
   }
   // Print the rectangles array as tab-delimited plaintext
   for(int i = 0; i < start_nodes.size(); i++) {
-    for(int j = 0; j < norm_A; j++) {
+    for(int j = 0; j < start_nodes[i].first; j++) {
+      haplo_d_out << 0 << "\t";
+    }
+    for(int j = 0; j < rectangles[i].size(); j++) {
       haplo_d_out << rectangles[i][j] << "\t";
+    }
+    for(int j = start_nodes[i].first + rectangles[i].size(); j < norm_A; j++) {
+      haplo_d_out << 0 << "\t";
     }
     haplo_d_out << endl;
   }
@@ -222,10 +232,20 @@ void haplo_d::unfold_rectangles(string output_path) {
 
 void haplo_d::print_decomposition(string output_path) {
   ofstream haplo_d_out (output_path);
-  for(int i = 1; i < cs.size(); i++) {
-    haplo_d_out << cs[i].get_node().node_id<< "\t";
+  for(int i = 0; i < cs.size(); i++) {
+    haplo_d_out << cs[i].get_node().node_id<< ", J's: \t";
     for(int j = 0; j < cs[i].S.size(); j++) {
-      haplo_d_out << cs[i].S[j].J << "\t";
+      haplo_d_out << cs[i].S[j].J << "\t\t";
+    }
+    haplo_d_out << endl;
+    haplo_d_out << cs[i].get_node().node_id<< ", prev: \t";
+    for(int j = 0; j < cs[i].S.size(); j++) {
+      haplo_d_out << cs[i].S[j].prev << "\t";
+    }
+    haplo_d_out << endl;
+    haplo_d_out << cs[i].get_node().node_id<< ", next: \t";
+    for(int j = 0; j < cs[i].S.size(); j++) {
+      haplo_d_out << cs[i].S[j].next << "\t";
     }
     haplo_d_out << endl;
   }
@@ -237,16 +257,16 @@ pair<int,int> haplo_d::print_decomposition_stats(string output_path) {
   int Acurrmax = 0;
   int tot_length = 0;
   haplo_d_out << cs[0].S.size() << "\t" << cs[0].height << "\t" << cs[0].height << "\t" << 0 << "\t"
-        << cs[0].width << "\t" << (cs[0].S[0].prev == &empty_rect) << "\n";
+        << cs[0].width << "\t" << (cs[0].S[0].prev == -1) << "\n";
   for(int i = 1; i < cs.size(); i++) {
-    int joiners = (cs[i].S[0].prev == &empty_rect) ? cs[i].S[0].I : 0;
+    int joiners = (cs[i].S[0].prev == -1) ? cs[i].S[0].I : 0;
     haplo_d_out << cs[i].S.size() << "\t" << cs[i].height << "\t" << joiners << "\t"
           << cs[i-1].height + joiners - cs[i].height << "\t" << cs[i].width << "\t"
-          << (cs[i].S[0].prev == &empty_rect) << "\n";
+          << (cs[i].S[0].prev == -1) << "\n";
     if(cs[i].S.size() > Acurrmax) {Acurrmax = cs[i].S.size();}
     tot_length += cs[i].width;
   }
-  cerr << "|A_curr|^max = " << Acurrmax << "; length = " << cs.size() << "nodes, " << tot_length << " bp"<< endl;
+  cerr << ": |A_curr|^max = " << Acurrmax << "; length = " << cs.size() << " nodes, " << tot_length << " bp"<< endl;
   haplo_d_out.close();
   pair<int,int> return_val;
   return_val.first = Acurrmax;
@@ -256,7 +276,7 @@ pair<int,int> haplo_d::print_decomposition_stats(string output_path) {
 
 void extract_threads_into_haplo_ds(xg::XG& index, string output_path,
         int64_t start_node, int64_t end_node, bool make_graph) {
-  ofstream all_thread_stats (output_path+"summary."+start_node+"to"+end_node+".csv");
+  ofstream all_thread_stats (output_path+"summary."+to_string(start_node)+"to"+to_string(end_node)+".csv");
   //ts_iv is a vector of the # of threads starting at each side
   end_node = (end_node == -1) ? index.ts_iv.size() : end_node + 1;
   for(int64_t i = start_node; i < end_node; i++) {
@@ -309,6 +329,7 @@ void extract_threads_into_haplo_ds(xg::XG& index, string output_path,
       // We have a thread_t to follow; let's make a haplo_d
       haplo_d h = haplo_d(path, index);
       h.calculate_Is(index);
+      cerr << i << " / " << j;
       pair<int,int> hd_output =
             h.print_decomposition_stats(output_path+to_string(i)+"_"+to_string(j)+".stats.csv");
       h.print_decomposition(output_path+to_string(i)+"_"+to_string(j)+".structure.csv");
@@ -329,9 +350,6 @@ haplo_d::haplo_d(const thread_t& t, XG& graph) {
   int last_height = rect.J;
   cs.push_back(cross_section(rect.J,0,t[0]));
   cs.back().S.push_back(rect);
-  // empty_rect has R = 0
-  cs.back().S.back().prev = &empty_rect;
-  cs.back().S.back().next = &empty_rect;
   int width = 0;
   int new_height;
   bool add_rectangle;
@@ -353,11 +371,14 @@ haplo_d::haplo_d(const thread_t& t, XG& graph) {
         add_A = 1;
       }
       // This is an entry or exit node, add a cross-section to the vector of
-      // "active" nodes
       if(add_A) {
         cs.back().width = width;
         width = 0;
         cs.push_back(cross_section(new_height,i,t[i]));
+      } else {
+        for (size_t a = 0; a < cs.back().S.size(); a++) {
+          cs.back().S[a].extend(t[a],graph);
+        }
       }
       // This is an entry node; we also need a new rectangle corresponding to the
       // new strip. We need to do this *before* we populate since cross_sections
@@ -369,14 +390,13 @@ haplo_d::haplo_d(const thread_t& t, XG& graph) {
         cs.back().height = new_rect.J;
         cs.back().S.push_back(new_rect);
         cs.back().S.back().I = new_rect.J - rect.J;
-        cs.back().S.back().prev = &empty_rect;
-        cs.back().S.back().next = &empty_rect;
       }
       if(add_A) {
+        int b = cs.size()-1;
         if(rect.J > 0) {
           cs.back().S.push_back(rect);
-          cs.back().S.back().prev = &(cs.end()[-2].S[0]);
-          cs.back().S.back().prev->next = &(cs.back().S.back());
+          cs[b].S.back().prev = 0;
+          cs[b-1].S[0].next = cs[b].S.size()-1;
         }
       }
       last_height = new_height;
@@ -393,8 +413,6 @@ haplo_d::haplo_d(const thread_t& t, XG& graph) {
         cs.back().height = new_rect.J;
         cs.back().S.push_back(new_rect);
         cs.back().S.back().I = new_rect.J - rect.J;
-        cs.back().S.back().prev = &empty_rect;
-        cs.back().S.back().next = &empty_rect;
       }
     }
   }
@@ -416,18 +434,17 @@ void haplo_d::calculate_Is(XG& graph) {
           rectangle new_rect = cs[b-1].S[a];
           new_J = new_rect.get_next_J(next_node,graph);
           new_rect.J = new_J;
-          //cs[b].S.end()[-2].I = cs[b].S.end()[-2].J - new_J;
           if(new_J != 0) {
             if(new_J == cs[b].S.back().J) {
               cs[b].S.pop_back();
             } else {
               cs[b].S.back().I = cs[b].S.back().J - new_J;
+              cs[b-1].S[a].next = cs[b].S.size();
             }
             cs[b].S.push_back(new_rect);
-            cs[b].S.back().prev = &cs[b-1].S[a];
-            cs[b].S.back().prev->next = &(cs[b].S.back());
+            cs[b].S.back().prev = a;
           } else {
-            // don't add rectangles where J = 0
+            // don't try to add more rectangles, we know that J = 0 from here on
             break;
           }
         }
@@ -437,6 +454,22 @@ void haplo_d::calculate_Is(XG& graph) {
       }
       cs[b].S.back().I = cs[b].S.back().J;
     }
+  }
+}
+
+inline double haplo_d::prev_R(int b, int a) {
+  if(cs[b].S[a].prev == -1) {
+    return 0;
+  } else {
+    return cs[b-1].S[cs[b].S[a].prev].R;
+  }
+}
+
+inline int haplo_d::prev_I(int b, int a) {
+  if(cs[b].S[a].prev == -1) {
+    return 0;
+  } else {
+    return cs[b-1].S[cs[b].S[a].prev].I;
   }
 }
 
@@ -453,16 +486,16 @@ double haplo_d::probability(double recombination_penalty) {
     S1S2 = 0;
     for(int a = 0; a < cs[b].S.size(); a++) {
       // N.B. that R's are r^a_b's rather that R^a_b's. Thus the I factor
-      S1 += (cs[b].S[a].prev->R) * (cs[b].S[a].I);
+      S1 += (prev_R(b,a)) * (prev_I(b,a));
     }
     for(int a = 0; a < cs[b-1].S.size(); a++) {
-      S1S2 += (cs[b].S[a].prev->R) * (cs[b].S[a].prev->I);
+      S1S2 += (prev_R(b,a)) * (prev_I(b,a));
     }
     // calculate contributions from all continuing strips
     for(int a = 0; a < cs[b].S.size(); a++) {
       cs[b].S[a].R =
       ((1 - memo.recombination_penalty()) * (S1 * memo.rr_diff(cs[b].height, cs[b].width)) +
-      ((cs[b].S[a].prev->R) * memo.rr_adj(cs[b].width)) +
+      (prev_R(b,a) * memo.rr_adj(cs[b].width)) +
       (memo.recombination_penalty() * S1S2 * memo.rr_all(cs[b].height,cs[b].width)));
     }
   }

@@ -50,8 +50,8 @@ private:
 public:
   ~rectangle(void) {};
   // Pointer to the rectangle in the same strip in the previous cross-section
-  rectangle* prev = nullptr;
-  rectangle* next = nullptr;
+  int prev = -1;
+  int next = -1;
   int J = 0;
   int I = 0;
   double R = 0;
@@ -102,6 +102,8 @@ public:
   // is for output to R or a similar program for visualization; haplo_d entities
   // as implemented are more compact but not easily human-readable
   void unfold_rectangles(string output_path);
+  inline double prev_R(int b, int a);
+  inline int prev_I(int b, int a);
 };
 
 thread_t path_to_thread_t(vg::Path& path);
