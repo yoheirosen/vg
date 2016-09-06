@@ -49,7 +49,8 @@ private:
   int a_index;
 public:
   ~rectangle(void) {};
-  // Pointer to the rectangle in the same strip in the previous cross-section
+  // Switched to indices from pointers as quick fix for messy bug caused by
+  // reindexing on removal of empty rectangles... TODO? fix this
   int prev = -1;
   int next = -1;
   int J = 0;
@@ -72,8 +73,8 @@ public:
   cross_section(int64_t new_height,int b,xg::XG::ThreadMapping new_node);
   ~cross_section(void) {};
   vector<rectangle> S;
-  int height;
-  int width = 1;
+  int height; // height (in consistent thread_ts)
+  int width = 1; // width (in base pairs)
   inline xg::XG::ThreadMapping get_node();
 };
 
@@ -86,16 +87,21 @@ public:
   vector<cross_section> cs;
   haplo_d(const thread_t& t, xg::XG& graph);
   ~haplo_d(void) {};
-  // calculate_Is() needs to be called before the cross_sections have I values in
+  // calculate_Is() needs to be called for the cross_sections have I values in
   // their rectangles. The haplo_d constructor only builds the most recent (in
   // terms of node history) 1 or 2 rectangles at each node
   void calculate_Is(xg::XG& graph);
   double probability(double recombination_penalty);
+  // Prints csv containing: number of threads joining, number leaving, number of
+  // consistent threads, length in base pairs, |A_curr| for each a->a+1 interval
+  // in the set A of "active" nodes. Returns |A_curr|^max and total length in
+  // base pairs
   pair<int,int> print_decomposition_stats(string output_path);
+  // Prints csv containing: J-values, prev indices, next indices--ie smallest
+  // human-interpretable representation of the haplo_d
   void print_decomposition(string output_path);
-
   // We want to make a big array where rows are strips and cells are rectangles'
-  // I-values
+  // I-values. This is for making pretty pictures of haplo_ds
 
   // This array will be relatively sparse since it will hold all-zero entries
   // prior to strips joining our query haplotype and all-one entries after. This
@@ -113,9 +119,6 @@ thread_t path_to_thread_t(vg::Path& path);
 // of embededded threads in a haplo_d
 void extract_threads_into_haplo_ds(xg::XG& index, string output_path, int64_t start_node, int64_t end_node, bool make_graph);
 void decompose_and_print(const thread_t& t, xg::XG& graph, string output_path);
-
-
-
 bool check_for_edges(int64_t old_node_id, bool old_node_is_reverse, int64_t new_node_id, bool new_node_is_reverse, xg::XG& index);
-
+bool check_if_thread_t_broken(const thread_t& t, XG& graph);
 #endif

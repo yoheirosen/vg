@@ -4791,6 +4791,8 @@ int main_find(int argc, char** argv) {
     vg::id_t end_id = 0;
     bool pairwise_distance = false;
     string haplotype_alignments;
+    string haplotype_alignments_for_likelihoods;
+    double recombination_penalty;
 
     int c;
     optind = 2; // force optind past command positional argument
@@ -4822,11 +4824,13 @@ int main_find(int argc, char** argv) {
                 {"alns-on", required_argument, 0, 'o'},
                 {"distance", no_argument, 0, 'D'},
                 {"haplotypes", required_argument, 0, 'H'},
+                {"haplotype-likelihoods", required_argument, 0, 'l'},
+                {"recombination-penalty", required_argument, 0, 'X'},
                 {0, 0, 0, 0}
             };
 
         int option_index = 0;
-        c = getopt_long (argc, argv, "d:x:n:e:s:o:k:hc:LS:z:j:CTp:P:r:amg:M:i:DH:",
+        c = getopt_long (argc, argv, "d:x:n:e:s:o:k:hc:LS:z:j:CTp:P:r:amg:M:i:DH:l:X:",
                          long_options, &option_index);
 
         // Detect the end of the options.
@@ -4930,6 +4934,14 @@ int main_find(int argc, char** argv) {
 
         case 'H':
             haplotype_alignments = optarg;
+            break;
+
+        case 'l':
+            haplotype_alignments_for_likelihoods = optarg;
+            break;
+
+        case 'X':
+            recombination_penalty = atoi(optarg);
             break;
 
         case 'h':
@@ -5134,7 +5146,66 @@ int main_find(int argc, char** argv) {
                 }
                 stream::for_each(in, lambda);
             }
+        }
+        if(!haplotype_alignments_for_likelihoods.empty()) {
+            // What should we do with each alignment?
+            function<void(Alignment&)> lambda = [&xindex,recombination_penalty](Alignment& aln) {
+              // Check if the path implied by this alignment is interrupted by
+              // missing edges in the xg index; if so the likelihood calculation
+              // won't be meaningful
+              Path p = aln.path();
+              thread_t t;
+              bool thread_broken = false;
+              Mapping mapping = p.mapping(0);
+              auto pos = mapping.position();
+              xg::XG::ThreadMapping curr_node = {pos.node_id(), pos.is_reverse()};
+              t.push_back(curr_node);
+              for(size_t i = 0; i < p.mapping_size(); i++) {
+                mapping = p.mapping(i);
+                pos = mapping.position();
+                xg::XG::ThreadMapping next_node = {pos.node_id(), pos.is_reverse()};
+                Edge edge_taken = xg::make_edge(curr_node.node_id, curr_node.is_reverse,
+                      next_node.node_id, next_node.is_reverse);
 
+                // Make sure we find it
+                bool edge_found = false;
+
+                vector<Edge> edges = next_node.is_reverse ? xindex.edges_on_end(next_node.node_id) : xindex.edges_on_start(next_node.node_id);
+
+                for(auto& edge : edges) {
+                  // Look at every edge in order.
+                  if(xg::edges_equivalent(edge, edge_taken)) {
+                    // If we found the edge we're taking, break.
+                    edge_found = true;
+                    break;
+                  }
+                }
+                if(edge_found) {
+                  t.push_back(next_node);
+                } else {
+                  thread_broken = true;
+                  break;
+                }
+              }
+              if(!thread_broken) {
+                // If not, get probability
+                haplo_d h = haplo_d(t, xindex);
+                h.calculate_Is(xindex);
+                double probability = h.probability(recombination_penalty);
+                cout << probability << endl;
+              }
+            };
+            if (haplotype_alignments_for_likelihoods == "-") {
+                stream::for_each(std::cin, lambda);
+            } else {
+                ifstream in;
+                in.open(haplotype_alignments_for_likelihoods.c_str());
+                if(!in.is_open()) {
+                    cerr << "[vg find] error: could not open alignments file " << haplotype_alignments << endl;
+                    exit(1);
+                }
+                stream::for_each(in, lambda);
+            }
         }
     } else if (!db_name.empty()) {
         if (!node_ids.empty() && path_name.empty()) {
@@ -8201,8 +8272,8 @@ void help_haplo(char** argv) {
          << "    -o, --output-path PATH     folder to which to output statistics" << endl
          << "    -q, --query-haplo PATH     outputs statistics for PATH" << endl
          << "    -A, --all-haplos           outputs statistics for all paths in xg index" << endl
-         << "    -s, --start-node node      node (in xg index) at which to start assessment of whole xg index"
-         << "    -e, --end-node node        node (in xg index) at which to end assessment of whole xg index, inclusive"
+         << "    -s, --start-node node      node (in xg index) at which to start assessment of whole xg index" << endl
+         << "    -e, --end-node node        node (in xg index) at which to end assessment of whole xg index, inclusive" << endl
          << "    -g, --graphical            output a (non-compact) array showing all strips" << endl;
 }
 
@@ -8238,7 +8309,7 @@ int main_haplo(int argc, char** argv) {
     };
 
     int option_index = 0;
-    c = getopt_long (argc, argv, "x:ndAq:o:s:l:gh",
+    c = getopt_long (argc, argv, "x:ndAq:o:s:e:l:gh",
     long_options, &option_index);
 
     /* Detect the end of the options. */
@@ -8300,26 +8371,25 @@ int main_haplo(int argc, char** argv) {
   }
 
   ifstream xg_stream(xg_name);
-  cerr << "Loading xg index " << xg_name << endl;
+  cerr << "Using xg index " << xg_name << endl;
   xg::XG index = xg::XG(xg_stream);
 
   if(print_path_names){
-    cerr << "Printing path names:" << endl;
+    cerr << "The xg index contains the following named paths, by rank:" << endl;
     for(size_t path_rank = 1; path_rank <= index.max_path_rank(); path_rank++) {
       cerr << path_rank << ": " << index.path_name(path_rank) << endl;
     }
   }
 
   if(generate_single_haplo_d_stats) {
+    // Get the path
     Path path = index.path(query_path_name);
+    // Turn it into a thread_t because that's what the haplo_d initializer takes
     thread_t thread = path_to_thread_t(path);
-    cerr << "Building the haplotype decomposition A-set for path " << query_path_name << endl;
     haplo_d h = haplo_d(thread, index);
-    cerr << "Computed rectangle boundaries" << endl;
     h.calculate_Is(index);
-    cerr << "Made whole rectangle decomposition!" << endl;
     h.print_decomposition_stats(output_directory+query_path_name+".stats.csv");
-    h.unfold_rectangles(output_directory+query_path_name+".picture.csv");
+    h.unfold_rectangles(output_directory+query_path_name+".plot.csv");
   }
 
   if(generate_all_haplo_d_stats) {

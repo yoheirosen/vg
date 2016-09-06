@@ -86,7 +86,7 @@ double RRMemo::rr_all(int height, int width) {
   return exp_rho * S_value(height, width);
 }
 
-// unmemoized implementations
+// Unmemoized implementations of same polynomials
 
 double rr_diff(int height, int width, double recombination_penalty) {
   double exp_rho = exp(-recombination_penalty);
@@ -147,17 +147,6 @@ inline XG::ThreadMapping cross_section::get_node() {
   return node;
 }
 
-thread_t path_to_thread_t(Path& path) {
-  thread_t t;
-  for(size_t i = 0; i < path.mapping_size(); i++) {
-    Mapping mapping = path.mapping(i);
-    auto pos = mapping.position();
-    XG::ThreadMapping m = {pos.node_id(), pos.is_reverse()};
-    t.push_back(m);
-  }
-  return t;
-}
-
 bool check_for_edges(int64_t old_node_id, bool old_node_is_reverse, int64_t new_node_id,
           bool new_node_is_reverse, xg::XG& index) {
   // What edge are we following
@@ -176,7 +165,160 @@ bool check_for_edges(int64_t old_node_id, bool old_node_is_reverse, int64_t new_
       break;
     }
   }
+  //if(edge_found == false) {  cerr << "did not find edge between" << old_node_id << " and " << new_node_id << endl;}
   return edge_found;
+}
+
+bool check_if_thread_t_broken(const thread_t& t, XG& graph){
+  bool broken = false;
+  XG::ThreadMapping current_node = t[0];
+  for(int i = 1; i < t.size(); i++) {
+    XG::ThreadMapping next_node = t[i];
+    bool edge_exists = check_for_edges(current_node.node_id, current_node.is_reverse,
+            next_node.node_id, next_node.is_reverse, graph);
+    if(!edge_exists) {
+      broken = true;
+      break;
+    }
+    current_node = next_node;
+  }
+  return broken;
+}
+
+haplo_d::haplo_d(const thread_t& t, XG& graph) {
+  rectangle rect;
+  rect.J = rect.get_next_J(t[0],graph);
+  // At the leftmost node there is only one strip, so I = J
+  rect.I = rect.J;
+  int last_height = rect.J;
+  cs.push_back(cross_section(rect.J,0,t[0]));
+  cs.back().S.push_back(rect);
+  int width = 0;
+  int new_height;
+  bool add_rectangle;
+  bool add_A;
+  for(int i = 1; i < t.size(); i++) {
+    // Count the number of base pairs since the last entry or exit node
+    width += graph.node_length(t[i-1].node_id);
+    new_height = graph.node_height(t[i]);
+    if(cs.back().S.size() != 0) {
+      rect = cs.back().S[0];
+      rect.J = rect.get_next_J(t[i],graph); // step this strip forward
+      // Did any threads leave?
+      if(last_height > rect.J) {
+        add_A = 1;
+      }
+      // Are there any threads here which didn't come from the previous node?
+      if(rect.J < new_height) {
+        add_rectangle = 1;
+        add_A = 1;
+      }
+      // This is an entry or exit node, add a cross-section to the vector of
+      // cross-sections (which corresponds to the "A" set in the theory doc)
+      if(add_A) {
+        cs.back().width = width;
+        width = 0;
+        cs.push_back(cross_section(new_height,i,t[i]));
+      } else {
+        // This isn't a node where anything laves or joins, let's skip over it
+        for (size_t a = 0; a < cs.back().S.size(); a++) {
+          cs.back().S[a].extend(t[a],graph);
+        }
+      }
+      // This is an entry node; we also need a new rectangle corresponding to the
+      // new strip. We need to do this *before* we populate since cross_sections
+      // arrange rectangles newest -> oldest
+      // NB that add_rectangle implies add_A
+      if(add_rectangle) {
+        rectangle new_rect;
+        new_rect.extend(t[i],graph);
+        new_rect.J = new_height;
+        cs.back().height = new_rect.J;
+        cs.back().S.push_back(new_rect);
+        cs.back().S.back().I = new_rect.J - rect.J;
+      }
+      if(add_A) {
+        int b = cs.size()-1;
+        if(rect.J > 0) {
+          cs.back().S.push_back(rect);
+          cs[b].S.back().prev = 0;
+          cs[b-1].S[0].next = cs[b].S.size()-1;
+        }
+      }
+      last_height = new_height;
+      add_A = 0;
+      add_rectangle = 0;
+    } else {
+      cs.back().width = width;
+      width = 0;
+      cs.push_back(cross_section(new_height,i,t[i]));
+      if(new_height > 0) {
+        rectangle new_rect;
+        new_rect.extend(t[i],graph);
+        new_rect.J = new_height;
+        cs.back().height = new_rect.J;
+        cs.back().S.push_back(new_rect);
+        cs.back().S.back().I = new_rect.J - rect.J;
+      }
+    }
+  }
+}
+
+void haplo_d::calculate_Is(XG& graph) {
+  // node 0 was done in the haplo_d constructor; start at node 1
+  for(int b = 1; b < cs.size(); b++) {
+    // make sure that there is at least one rectangle here
+    if(cs[b].S.size() != 0) {
+      // get side and orientation of the next element in our query thread_t
+      XG::ThreadMapping next_node = cs[b].get_node();
+      // if J = 0 for a rectangle, then J must be 0 for all older rectangles
+      bool nonempty_J = (cs[b].S.back().J > 0);
+      if(nonempty_J) {
+        int new_J;
+        // start at a = 1 since the haplo_d initializer handles a = 0
+        for(int a = 1; a < cs[b-1].S.size(); a++) {
+          rectangle new_rect = cs[b-1].S[a];
+          new_J = new_rect.get_next_J(next_node,graph);
+          new_rect.J = new_J;
+          if(new_J != 0) {
+            if(new_J == cs[b].S.back().J) {
+              // There was nothing in the last rectangle, so let's remove it
+              cs[b].S.pop_back();
+            } else {
+              // There were threads in the last rectangle, so let's count them
+              cs[b].S.back().I = cs[b].S.back().J - new_J;
+              cs[b-1].S[a].next = cs[b].S.size();
+            }
+            // Let's assume for now that there is something in this rectangle;
+            // if it turns out at the next step that we're wrong, then we'll
+            // remove it
+            cs[b].S.push_back(new_rect);
+            cs[b].S.back().prev = a;
+          } else {
+            // don't try to add more rectangles, we know that J = 0 from here on
+            break;
+          }
+        }
+      } else {
+        // this shouldn't be here
+        cs[b].S.pop_back();
+      }
+      cs[b].S.back().I = cs[b].S.back().J;
+    }
+  }
+}
+
+// Querying haplo_d structure:
+
+thread_t path_to_thread_t(Path& path) {
+  thread_t t;
+  for(size_t i = 0; i < path.mapping_size(); i++) {
+    Mapping mapping = path.mapping(i);
+    auto pos = mapping.position();
+    XG::ThreadMapping m = {pos.node_id(), pos.is_reverse()};
+    t.push_back(m);
+  }
+  return t;
 }
 
 void decompose_and_print(const thread_t& t, XG& graph, string output_path) {
@@ -202,17 +344,18 @@ void haplo_d::unfold_rectangles(string output_path) {
   // Iterate through all initial nodes and build the strips in a row of the
   // "rectangles" array
   sort(start_nodes.begin(),start_nodes.end());
+  // Need to use a vector of vectors then expand it at the time of printing
+  // since you'd be trying to allocate a huge 2D array otherwise. Be careful of
+  // indexing!!
   vector<vector<int>> rectangles(start_nodes.size(),vector<int>());
   for(int i = 0; i < start_nodes.size(); i++) {
     int current_rect = start_nodes[i].second;
-    cerr << "i = " << i << " current_rect = " << current_rect;
+    int j = 0;
     while(current_rect != -1) {
-      //TODO rectangles[i].push_back(current_rect->I);
-      //TODO cerr << " J = " << current_rect->J << endl;
-      //TODOcurrent_rect = current_rect->next;
-      //TODOcerr << "current_rect = " << current_rect << " |S|" << cs[start_nodes[i].first].S.size();
+      rectangles[i].push_back(cs[start_nodes[i].first + j].S[current_rect].I);
+      current_rect = cs[start_nodes[i].first + j].S[current_rect].next;
+      j++;
     }
-    cerr << "OK!!";
   }
   // Print the rectangles array as tab-delimited plaintext
   for(int i = 0; i < start_nodes.size(); i++) {
@@ -342,120 +485,7 @@ void extract_threads_into_haplo_ds(xg::XG& index, string output_path,
   all_thread_stats.close();
 }
 
-haplo_d::haplo_d(const thread_t& t, XG& graph) {
-  rectangle rect;
-  rect.J = rect.get_next_J(t[0],graph);
-  // At the leftmost node there is only one strip, so I = J
-  rect.I = rect.J;
-  int last_height = rect.J;
-  cs.push_back(cross_section(rect.J,0,t[0]));
-  cs.back().S.push_back(rect);
-  int width = 0;
-  int new_height;
-  bool add_rectangle;
-  bool add_A;
-  for(int i = 1; i < t.size(); i++) {
-    // Count the number of base pairs since the last entry or exit node
-    width += graph.node_length(t[i-1].node_id);
-    new_height = graph.node_height(t[i]);
-    if(cs.back().S.size() != 0) {
-      rect = cs.back().S[0];
-      rect.J = rect.get_next_J(t[i],graph); // step this strip forward
-      // Did any threads leave?
-      if(last_height > rect.J) {
-        add_A = 1;
-      }
-      // Are there any threads here which didn't come from the previous node?
-      if(rect.J < new_height) {
-        add_rectangle = 1;
-        add_A = 1;
-      }
-      // This is an entry or exit node, add a cross-section to the vector of
-      if(add_A) {
-        cs.back().width = width;
-        width = 0;
-        cs.push_back(cross_section(new_height,i,t[i]));
-      } else {
-        for (size_t a = 0; a < cs.back().S.size(); a++) {
-          cs.back().S[a].extend(t[a],graph);
-        }
-      }
-      // This is an entry node; we also need a new rectangle corresponding to the
-      // new strip. We need to do this *before* we populate since cross_sections
-      // arrange rectangles newest -> oldest
-      if(add_rectangle) {
-        rectangle new_rect;
-        new_rect.extend(t[i],graph);
-        new_rect.J = new_height;
-        cs.back().height = new_rect.J;
-        cs.back().S.push_back(new_rect);
-        cs.back().S.back().I = new_rect.J - rect.J;
-      }
-      if(add_A) {
-        int b = cs.size()-1;
-        if(rect.J > 0) {
-          cs.back().S.push_back(rect);
-          cs[b].S.back().prev = 0;
-          cs[b-1].S[0].next = cs[b].S.size()-1;
-        }
-      }
-      last_height = new_height;
-      add_A = 0;
-      add_rectangle = 0;
-    } else {
-      cs.back().width = width;
-      width = 0;
-      cs.push_back(cross_section(new_height,i,t[i]));
-      if(new_height > 0) {
-        rectangle new_rect;
-        new_rect.extend(t[i],graph);
-        new_rect.J = new_height;
-        cs.back().height = new_rect.J;
-        cs.back().S.push_back(new_rect);
-        cs.back().S.back().I = new_rect.J - rect.J;
-      }
-    }
-  }
-}
-
-void haplo_d::calculate_Is(XG& graph) {
-  // node 0 was done in the haplo_d constructor; start at node 1
-  for(int b = 1; b < cs.size(); b++) {
-    // make sure that there is at least one rectangle here
-    if(cs[b].S.size() != 0) {
-      // get side and orientation of the next element in our query thread_t
-      XG::ThreadMapping next_node = cs[b].get_node();
-      // if J = 0 for a rectangle, then J must be 0 for all older rectangles
-      bool nonempty_J = (cs[b].S.back().J > 0);
-      if(nonempty_J) {
-        int new_J;
-        // start at a = 1 since the haplo_d initializer handles a = 0
-        for(int a = 1; a < cs[b-1].S.size(); a++) {
-          rectangle new_rect = cs[b-1].S[a];
-          new_J = new_rect.get_next_J(next_node,graph);
-          new_rect.J = new_J;
-          if(new_J != 0) {
-            if(new_J == cs[b].S.back().J) {
-              cs[b].S.pop_back();
-            } else {
-              cs[b].S.back().I = cs[b].S.back().J - new_J;
-              cs[b-1].S[a].next = cs[b].S.size();
-            }
-            cs[b].S.push_back(new_rect);
-            cs[b].S.back().prev = a;
-          } else {
-            // don't try to add more rectangles, we know that J = 0 from here on
-            break;
-          }
-        }
-      } else {
-        // this shouldn't be here
-        cs[b].S.pop_back();
-      }
-      cs[b].S.back().I = cs[b].S.back().J;
-    }
-  }
-}
+// Calculating probabilitiees
 
 inline double haplo_d::prev_R(int b, int a) {
   if(cs[b].S[a].prev == -1) {
