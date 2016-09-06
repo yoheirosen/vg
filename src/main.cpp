@@ -5160,7 +5160,7 @@ int main_find(int argc, char** argv) {
               auto pos = mapping.position();
               xg::XG::ThreadMapping curr_node = {pos.node_id(), pos.is_reverse()};
               t.push_back(curr_node);
-              for(size_t i = 0; i < p.mapping_size(); i++) {
+              for(size_t i = 1; i < p.mapping_size(); i++) {
                 mapping = p.mapping(i);
                 pos = mapping.position();
                 xg::XG::ThreadMapping next_node = {pos.node_id(), pos.is_reverse()};
@@ -5182,6 +5182,7 @@ int main_find(int argc, char** argv) {
                 }
                 if(edge_found) {
                   t.push_back(next_node);
+                  curr_node = next_node;
                 } else {
                   thread_broken = true;
                   break;
@@ -5193,6 +5194,8 @@ int main_find(int argc, char** argv) {
                 h.calculate_Is(xindex);
                 double probability = h.probability(recombination_penalty);
                 cout << probability << endl;
+              } else {
+                cout << t.size() << endl;
               }
             };
             if (haplotype_alignments_for_likelihoods == "-") {

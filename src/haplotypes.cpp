@@ -490,7 +490,12 @@ void extract_threads_into_haplo_ds(xg::XG& index, string output_path,
 inline double haplo_d::prev_R(int b, int a) {
   if(cs[b].S[a].prev == -1) {
     return 0;
-  } else {
+  } else {/*
+    if(b >= cs.size()) {
+      cerr << "b >= cs.size()";
+    } else if (a >= cs[b].S.size()) {
+      cerr << "a >= cs[b].S.size()";
+    }*/
     return cs[b-1].S[cs[b].S[a].prev].R;
   }
 }
@@ -519,7 +524,7 @@ double haplo_d::probability(double recombination_penalty) {
       S1 += (prev_R(b,a)) * (prev_I(b,a));
     }
     for(int a = 0; a < cs[b-1].S.size(); a++) {
-      S1S2 += (prev_R(b,a)) * (prev_I(b,a));
+      S1S2 += cs[b-1].S[a].R * cs[b-1].S[a].I;
     }
     // calculate contributions from all continuing strips
     for(int a = 0; a < cs[b].S.size(); a++) {
