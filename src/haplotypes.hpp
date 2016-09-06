@@ -26,6 +26,10 @@ private:
   double rho;
   double exp_rho;
 
+  double continue_probability;
+
+  int population_size = 5008;
+
   double S_value(int height, int width);
   double T_value(int width);
 

@@ -10,6 +10,8 @@ using namespace xg;
 RRMemo::RRMemo(double recombination_penalty)  {
   rho = recombination_penalty;
   exp_rho = exp(-rho);
+  continue_probability = 1 - population_size * exp_rho;
+  exp_rho = exp_rho / continue_probability;
   S.push_back(std::vector<double>(1, 1.0));
   S_multipliers.push_back(1.0);
   T.push_back(1.0);
@@ -532,6 +534,7 @@ double haplo_d::probability(double recombination_penalty) {
       ((1 - memo.recombination_penalty()) * (S1 * memo.rr_diff(cs[b].height, cs[b].width)) +
       (prev_R(b,a) * memo.rr_adj(cs[b].width)) +
       (memo.recombination_penalty() * S1S2 * memo.rr_all(cs[b].height,cs[b].width)));
+      cs[b].S[a].R = cs[b].S[a].R * pow(continue_probability,cs[b].width);
     }
   }
   double total_probability_haplotype = 0;
