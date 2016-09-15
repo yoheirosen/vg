@@ -5751,6 +5751,8 @@ int main_index(int argc, char** argv) {
                 // What's the first reference position after the last variant?
                 size_t nonvariant_start = 0;
 
+                vector<size_t> nonvariant_starts(num_phases, 0);
+
                 // Completed ones just get dumped into the index
                 auto finish_phase = [&](size_t phase_number) {
                     // We have finished a phase (because an unphased variant
@@ -5824,7 +5826,7 @@ int main_index(int argc, char** argv) {
                     // intervening reference nodes from the last variant, if
                     // any. For which we need access to the last variant's past-
                     // the-end reference position.
-                    size_t ref_pos = nonvariant_start;
+                    size_t ref_pos = nonvariant_starts[phase_number];
                     while(ref_pos < end) {
                         // While there is intervening reference
                         // sequence, add it to our phase.
@@ -5873,7 +5875,7 @@ int main_index(int argc, char** argv) {
                             // For both the phases for the sample, add mappings
                             // through all the fixed reference nodes between the
                             // last variant and here.
-                            append_reference_mappings_until(sample_number * 2 + phase_offset, variant.position);
+                            // append_reference_mappings_until(sample_number * 2 + phase_offset, variant.position);
 
                             // If this variant isn't phased, this will just be a
                             // reference-matching piece of thread after the last
@@ -5899,19 +5901,29 @@ int main_index(int argc, char** argv) {
                             // Handle each phase and its alt
                             int& alt_index = alt_indices[phase_offset];
 
-                            // We need to find the path for this alt of this
-                            // variant. We can pull out the whole thing since it
-                            // should be short.
-                            Path alt_path = alt_paths.at("_alt_" + var_name + "_" + to_string(alt_index));
-                            // TODO: if we can't find this path, it probaby
-                            // means we mismatched the vg file and the vcf file.
-                            // Maybe we should complain to the user instead of
-                            // just failing an assert in at()?
+                            // If this sample doesn't take the reference path at this
+                            // variant
+                            if(alt_index != 0) {
+                              // We need to find the path for this alt of this
+                              // variant. We can pull out the whole thing since it
+                              // should be short.
 
+                              Path alt_path = alt_paths.at("_alt_" + var_name + "_" + to_string(alt_index));
+                              // TODO: if we can't find this path, it probaby
+                              // means we mismatched the vg file and the vcf file.
+                              // Maybe we should complain to the user instead of
+                              // just failing an assert in at()?
 
-                            for(size_t i = 0; i < alt_path.mapping_size(); i++) {
+                              // Since we know that we have alt sequence, it's now
+                              // safe to add in reference sequence
+                              append_reference_mappings_until(sample_number * 2 + phase_offset, variant.position);
+
+                              for(size_t i = 0; i < alt_path.mapping_size(); i++) {
                                 // Then blit mappings from the alt over to the phase thread
                                 append_mapping(sample_number * 2 + phase_offset, alt_path.mapping(i));
+                              }
+
+                              nonvariant_starts[sample_number * 2 + phase_offset] = variant.position + variant.ref.size();
                             }
 
                             // TODO: We can't really land anywhere on the other
@@ -8376,6 +8388,10 @@ int main_haplo(int argc, char** argv) {
   ifstream xg_stream(xg_name);
   cerr << "Using xg index " << xg_name << endl;
   xg::XG index = xg::XG(xg_stream);
+
+  if(graphical_deconstructions) {
+    cerr << "Warning, graphical deconstructions are massive files" << endl;
+  }
 
   if(print_path_names){
     cerr << "The xg index contains the following named paths, by rank:" << endl;

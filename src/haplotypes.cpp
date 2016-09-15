@@ -23,7 +23,11 @@ RRMemo::~RRMemo(void) {
 }
 
 double RRMemo::recombination_penalty() {
-  return rho;
+  return exp_rho;
+}
+
+double RRMemo::cont_probability() {
+  return continue_probability;
 }
 
 double RRMemo::S_value(int height, int width) {
@@ -209,6 +213,9 @@ haplo_d::haplo_d(const thread_t& t, XG& graph) {
       // Did any threads leave?
       if(last_height > rect.J) {
         add_A = 1;
+        if(rect.J / last_height < 0.1) {
+          cerr << "\t" << (1 -rect.J / last_height)*100 << "%% exit @" << t[i-1].node_id;
+        }
       }
       // Are there any threads here which didn't come from the previous node?
       if(rect.J < new_height) {
@@ -421,9 +428,9 @@ pair<int,int> haplo_d::print_decomposition_stats(string output_path) {
 
 void extract_threads_into_haplo_ds(xg::XG& index, string output_path,
         int64_t start_node, int64_t end_node, bool make_graph) {
-  ofstream all_thread_stats (output_path+"summary."+to_string(start_node)+"to"+to_string(end_node)+".csv");
   //ts_iv is a vector of the # of threads starting at each side
   end_node = (end_node == -1) ? index.ts_iv.size() : end_node + 1;
+  ofstream all_thread_stats (output_path+"summary."+to_string(start_node)+"to"+to_string(end_node)+".csv");
   for(int64_t i = start_node; i < end_node; i++) {
     // Skip it if no threads start at it
     if(index.ts_iv[i] == 0) {
@@ -517,6 +524,8 @@ double haplo_d::probability(double recombination_penalty) {
   double S1S2 = 0;
   // compute R for the first interval (which has no predecessor)
   // we are always working at the left edge of a cross_section
+  if(cs[0].height < 1) {cerr << "h\t" << cs[0].height; return 0;}
+  if(cs[0].width < 1) {cerr << "w\t" << cs[0].width; return 0;}
   cs[0].S[0].R = memo.rr_all(cs[0].height,cs[0].width);
   for (int b = 1; b < cs.size(); b++) {
     S1 = 0;
@@ -530,18 +539,24 @@ double haplo_d::probability(double recombination_penalty) {
     }
     // calculate contributions from all continuing strips
     for(int a = 0; a < cs[b].S.size(); a++) {
+      if(cs[b].height < 1) {cerr << "h\t" << cs[b].height; return 0;}
+      if(cs[b].width < 1) {cerr << "w\t" << cs[b].width; return 0;}
       cs[b].S[a].R =
       ((1 - memo.recombination_penalty()) * (S1 * memo.rr_diff(cs[b].height, cs[b].width)) +
       (prev_R(b,a) * memo.rr_adj(cs[b].width)) +
       (memo.recombination_penalty() * S1S2 * memo.rr_all(cs[b].height,cs[b].width)));
-      cs[b].S[a].R = cs[b].S[a].R * pow(continue_probability,cs[b].width);
+      cs[b].S[a].R = cs[b].S[a].R * pow(memo.cont_probability(),cs[b].width);
     }
   }
   double total_probability_haplotype = 0;
   for(int a = 0; a < cs.back().S.size(); a++) {
     total_probability_haplotype += cs.back().S[a].R;
   }
-  return total_probability_haplotype;
+  if(total_probability_haplotype > 0 ) {
+    return total_probability_haplotype;
+  } else {
+    return 0;
+  }
 }
 
 bool RR_tests(void) {
