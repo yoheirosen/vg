@@ -5803,12 +5803,12 @@ int main_index(int argc, char** argv) {
                         if(!index.has_edge(last_node, last_from_start, new_node, new_to_end)) {
                             // We can't have a thread take this edge. Split ane
                             // emit the current mappings and start a new path.
-#ifdef debug
+//#ifdef debug
                             cerr << "warning:[vg index] phase " << phase_number << " wants edge "
                                 << last_node << (last_from_start ? "L" : "R") << " - "
                                 << new_node << (new_to_end ? "R" : "L")
                                 << " which does not exist. Splitting!" << endl;
-#endif
+//#endif
                             finish_phase(phase_number);
                         }
                     }
@@ -5827,6 +5827,9 @@ int main_index(int argc, char** argv) {
                     // any. For which we need access to the last variant's past-
                     // the-end reference position.
                     size_t ref_pos = nonvariant_starts[phase_number];
+                    cerr << "[vg index] phase " << phase_number << " ref sequence was requested from "
+                    << ref_pos << " to " << end - 1 << " inclusive" << endl;
+                    cerr << "[vg index] phase " << phase_number << " adding ";
                     while(ref_pos < end) {
                         // While there is intervening reference
                         // sequence, add it to our phase.
@@ -5839,7 +5842,12 @@ int main_index(int argc, char** argv) {
 
                         // Advance to what's after that mapping
                         ref_pos += index.node_length(ref_mapping.position().node_id());
+                        cerr << active_phase_threads[phase_number].back().node_id << "\t";
                     }
+                    cerr << endl;
+                    nonvariant_starts[phase_number] = ref_pos;
+                    cerr << "[vg index] phase " << phase_number << " added ref sequence until "
+                    << ref_pos << endl;
                 };
 
                 // We also have another function to handle each variant as it comes in.
@@ -5853,7 +5861,7 @@ int main_index(int argc, char** argv) {
                     if(alt_paths.count("_alt_" + var_name + "_0") == 0) {
                         // There isn't a reference alt path for this variant.
 #ifdef debug
-                        cerr << "Reference alt for " << var_name << " not in VG set! Skipping!" << endl;
+                        cerr << endl << "Reference alt for " << var_name << " not in VG set! Skipping!" << endl;
 #endif
                         // Don't bother with this variant
                         return;
@@ -5914,16 +5922,31 @@ int main_index(int argc, char** argv) {
                               // Maybe we should complain to the user instead of
                               // just failing an assert in at()?
 
-                              // Since we know that we have alt sequence, it's now
-                              // safe to add in reference sequence
-                              append_reference_mappings_until(sample_number * 2 + phase_offset, variant.position);
+                              // **********************************************
+                              // current vcfs have conflicting alts; if you can't
+                              // add the next alt without backtracking, then don't
+                              // this results in preferentially keeping the leftmost
+                              // of overlapping alts
+                              // **********************************************
+                              if(nonvariant_starts[sample_number * 2 + phase_offset] <= variant.position) {
+                                // Since we know that we have alt sequence, it's now
+                                // safe to add in reference sequence
+                                append_reference_mappings_until(sample_number * 2 + phase_offset, variant.position);
 
-                              for(size_t i = 0; i < alt_path.mapping_size(); i++) {
-                                // Then blit mappings from the alt over to the phase thread
-                                append_mapping(sample_number * 2 + phase_offset, alt_path.mapping(i));
+                                cerr << "[vg index] phase " << sample_number * 2 + phase_offset << " adding alt from " << variant.position << " to " << variant.position + variant.ref.size() << endl;
+                                cerr << "[vg index] phase " << sample_number * 2 + phase_offset << " adding: ";
+                                for(size_t i = 0; i < alt_path.mapping_size(); i++) {
+
+                                  // Then blit mappings from the alt over to the phase thread
+                                  append_mapping(sample_number * 2 + phase_offset, alt_path.mapping(i));
+                                  cerr << active_phase_threads[sample_number * 2 + phase_offset].back().node_id << "\t";
+                                }
+                                cerr << endl;
+
+                                nonvariant_starts[sample_number * 2 + phase_offset] = variant.position + variant.ref.size();
+                              } else {
+                                cerr << "[vg index] phase " << sample_number * 2 + phase_offset << " had conflicting alts; setting rightmost one to ref" << endl;
                               }
-
-                              nonvariant_starts[sample_number * 2 + phase_offset] = variant.position + variant.ref.size();
                             }
 
                             // TODO: We can't really land anywhere on the other
