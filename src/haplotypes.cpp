@@ -127,9 +127,11 @@ void rectangle::extend(XG::ThreadMapping next_node, XG& graph) {
   // every haplotype passing through the node
   int64_t next_side = graph.id_to_rank(next_node.node_id) * 2 + next_node.is_reverse;
   if(state.current_side == 0) {
+    // cerr << "extending empty to " << next_node.node_id << endl;
     state.range_start = 0;
     state.range_end = graph.node_height(next_node);
   } else {
+    // cerr << "extend called:" <<  graph.rank_to_id(state.current_side / 2) << "->" << next_node.node_id << endl;
     bool edge_exists = check_for_edges(graph.rank_to_id(state.current_side / 2),state.current_side % 2,
             next_node.node_id, next_node.is_reverse, graph);
     // Else, look at where the path goes to and apply the where_to function to
@@ -146,6 +148,9 @@ void rectangle::extend(XG::ThreadMapping next_node, XG& graph) {
 
 int rectangle::get_next_J(XG::ThreadMapping next_node, XG& graph) {
   extend(next_node, graph);
+  //thread_t t;
+  //t.push_back(next_node);
+  //graph.extend_search(state,t);
   return state.count();
 }
 
@@ -171,7 +176,7 @@ bool check_for_edges(int64_t old_node_id, bool old_node_is_reverse, int64_t new_
       break;
     }
   }
-  //if(edge_found == false) {  cerr << "did not find edge between" << old_node_id << " and " << new_node_id << endl;}
+  if(edge_found == false) {  cerr << "did not find edge between" << old_node_id << " and " << new_node_id << endl;}
   return edge_found;
 }
 
@@ -190,8 +195,31 @@ bool check_if_thread_t_broken(const thread_t& t, XG& graph){
   }
   return broken;
 }
-
+/*
+void haplo_d::scan_for_breakage(double threshold, XG& graph) {
+  string output = "";
+  for(int i = 1; i < cs.size(); i++) {
+    if(cs[i-1].S.back().next == -1) {
+      //TODO: need to fix this!
+      if(check_for_edges(cs[i-1].node.node_id,cs[i-1].node.is_reverse,
+              cs[i].node.node_id,cs[i].node.is_reverse,graph)) {
+        output = output+"\t"+cs[i-1].node.node_id+"\t->\t"+cs[i].node.node_id+"\t 100%% leave";
+      } else {
+        output = output+"\t"+cs[i-1].node.node_id+"\t->\t"+cs[i].node.node_id+"\t broken";
+      }
+    } else {
+      if(cs[i].S[cs[i-1].S.back().next].J/cs[i-1].back().J < threshold) {
+        double percentage = 100*cs[i].S[cs[i-1].S.back().next].J/cs[i-1].back().J;
+        output = output+"\t"+cs[i-1].node.node_id+"\t->\t"+cs[i].node.node_id+"\t"+percentage+"%% leave";
+      }
+    }
+    if(cs[i-1].S[cs[i].S.back().J]
+      cs[i-1].S.back().J)
+  }
+}
+*/
 haplo_d::haplo_d(const thread_t& t, XG& graph) {
+  // cerr << "i = 0" << endl;
   rectangle rect;
   rect.J = rect.get_next_J(t[0],graph);
   // At the leftmost node there is only one strip, so I = J
@@ -204,18 +232,17 @@ haplo_d::haplo_d(const thread_t& t, XG& graph) {
   bool add_rectangle;
   bool add_A;
   for(int i = 1; i < t.size(); i++) {
+    // cerr << "i = " << i << endl;
     // Count the number of base pairs since the last entry or exit node
     width += graph.node_length(t[i-1].node_id);
     new_height = graph.node_height(t[i]);
     if(cs.back().S.size() != 0) {
       rect = cs.back().S[0];
+      // cerr << "doing rect" << endl;
       rect.J = rect.get_next_J(t[i],graph); // step this strip forward
       // Did any threads leave?
       if(last_height > rect.J) {
         add_A = 1;
-        if(rect.J / last_height < 0.1) {
-          cerr << "\t" << (1 -rect.J / last_height)*100 << "%% exit @" << t[i-1].node_id;
-        }
       }
       // Are there any threads here which didn't come from the previous node?
       if(rect.J < new_height) {
@@ -229,9 +256,10 @@ haplo_d::haplo_d(const thread_t& t, XG& graph) {
         width = 0;
         cs.push_back(cross_section(new_height,i,t[i]));
       } else {
-        // This isn't a node where anything laves or joins, let's skip over it
+        // This isn't a node where anything leaves or joins, let's skip over it
+        cs.back().bridge.push_back(t[i]);
         for (size_t a = 0; a < cs.back().S.size(); a++) {
-          cs.back().S[a].extend(t[a],graph);
+          cs.back().S[a].extend(t[i],graph);
         }
       }
       // This is an entry node; we also need a new rectangle corresponding to the
@@ -240,6 +268,7 @@ haplo_d::haplo_d(const thread_t& t, XG& graph) {
       // NB that add_rectangle implies add_A
       if(add_rectangle) {
         rectangle new_rect;
+        // cerr << "doing new_rect" << endl;
         new_rect.extend(t[i],graph);
         new_rect.J = new_height;
         cs.back().height = new_rect.J;
@@ -249,7 +278,7 @@ haplo_d::haplo_d(const thread_t& t, XG& graph) {
       if(add_A) {
         int b = cs.size()-1;
         if(rect.J > 0) {
-          cs.back().S.push_back(rect);
+          cs[b].S.push_back(rect);
           cs[b].S.back().prev = 0;
           cs[b-1].S[0].next = cs[b].S.size()-1;
         }
@@ -276,6 +305,7 @@ haplo_d::haplo_d(const thread_t& t, XG& graph) {
 void haplo_d::calculate_Is(XG& graph) {
   // node 0 was done in the haplo_d constructor; start at node 1
   for(int b = 1; b < cs.size(); b++) {
+    // cerr << "b = " << b << endl;
     // make sure that there is at least one rectangle here
     if(cs[b].S.size() != 0) {
       // get side and orientation of the next element in our query thread_t
@@ -286,7 +316,14 @@ void haplo_d::calculate_Is(XG& graph) {
         int new_J;
         // start at a = 1 since the haplo_d initializer handles a = 0
         for(int a = 1; a < cs[b-1].S.size(); a++) {
+          // cerr << "a = " << a << endl;
           rectangle new_rect = cs[b-1].S[a];
+          if (cs[b-1].bridge.size() != 0 &&
+                new_rect.state.current_side != graph.id_to_rank(cs[b-1].bridge.back().node_id) * 2 + cs[b-1].bridge.back().is_reverse) {
+            for(int i = 0; i < cs[b-1].bridge.size(); i++) {
+              new_rect.extend(cs[b-1].bridge[i],graph);
+            }
+          }
           new_J = new_rect.get_next_J(next_node,graph);
           new_rect.J = new_J;
           if(new_J != 0) {
@@ -407,7 +444,7 @@ void haplo_d::print_decomposition(string output_path) {
 pair<int,int> haplo_d::print_decomposition_stats(string output_path) {
   ofstream haplo_d_out (output_path);
   int Acurrmax = 0;
-  int tot_length = 0;
+  int tot_length = cs[0].width;
   haplo_d_out << cs[0].S.size() << "\t" << cs[0].height << "\t" << cs[0].height << "\t" << 0 << "\t"
         << cs[0].width << "\t" << (cs[0].S[0].prev == -1) << "\n";
   for(int i = 1; i < cs.size(); i++) {
@@ -425,6 +462,184 @@ pair<int,int> haplo_d::print_decomposition_stats(string output_path) {
   return_val.second = tot_length;
   return return_val;
 }
+
+void probabilities_of_all_theads_in_index(xg::XG& index, int64_t start_node, int64_t end_node, double recombination_penalty) {
+  end_node = (end_node == -1) ? index.ts_iv.size() : end_node + 1;
+  for(int64_t i = 1; i < end_node; i++) {
+    // Skip it if no threads start at it
+    if(index.ts_iv[i] == 0) {
+        continue;
+    }
+    // If there are threads starting,
+    for(int64_t j = 0; j < index.ts_iv[i]; j++) {
+      // For every thread starting there
+      thread_t path;
+      int64_t side = i;
+      int64_t offset = j;
+      cerr << "computing probability for thread starting at \t" << i << " " << j << endl;
+      while(true) {
+          // Unpack the side into a node traversal
+          xg::XG::ThreadMapping m = {index.rank_to_id(side / 2), (bool) (side % 2)};
+          // Add the mapping to the thread
+          path.push_back(m);
+          // Work out where we go:
+          // What edge of the available edges do we take?
+          int64_t edge_index = index.bs_get(side, offset);
+          // If we find a separator, we're very broken.
+          assert(edge_index != index.BS_SEPARATOR);
+          // Does the path end?
+          if(edge_index == index.BS_NULL) {
+              // Path ends here.
+              break;
+          } else {
+              // If we've got an edge, convert to an actual edge index
+              edge_index -= 2;
+          }
+          // We also should not have negative edges.
+          assert(edge_index >= 0);
+          // Look at the edges we could have taken next
+          vector<Edge> edges_out = side % 2 ? index.edges_on_start(index.rank_to_id(side / 2)) :
+                index.edges_on_end(index.rank_to_id(side / 2));
+          assert(edge_index < edges_out.size());
+          Edge& taken = edges_out[edge_index];
+          // Follow the edge
+          int64_t other_node = taken.from() == index.rank_to_id(side / 2) ? taken.to() :
+                taken.from();
+          bool other_orientation = (side % 2) != taken.from_start() != taken.to_end();
+          // Get the side
+          int64_t other_side = index.id_to_rank(other_node) * 2 + other_orientation;
+          // Go there with where_to
+          offset = index.where_to(side, offset, other_side);
+          side = other_side;
+          // Continue the process from this new side
+      }
+    // We have a thread to follow, take it
+    haplo_d h = haplo_d(path, index);
+    h.calculate_Is(index);
+    cout << h.probability(recombination_penalty) << endl;
+    }
+  }
+}
+
+void report_threads_and_breaks(xg::XG& index, int64_t start_node, int64_t end_node) {
+  end_node = (end_node == -1) ? index.ts_iv.size() : end_node + 1;
+  for(int64_t i = 1; i < end_node; i++) {
+    // Skip it if no threads start at it
+    if(index.ts_iv[i] == 0) {
+        continue;
+    }
+    // If there are threads starting,
+    for(int64_t j = 0; j < index.ts_iv[i]; j++) {
+      // For every thread starting there
+      thread_t path;
+      int64_t side = i;
+      int64_t offset = j;
+      while(true) {
+          // Unpack the side into a node traversal
+          xg::XG::ThreadMapping m = {index.rank_to_id(side / 2), (bool) (side % 2)};
+          // Add the mapping to the thread
+          path.push_back(m);
+          // Work out where we go:
+          // What edge of the available edges do we take?
+          int64_t edge_index = index.bs_get(side, offset);
+          // If we find a separator, we're very broken.
+          assert(edge_index != index.BS_SEPARATOR);
+          // Does the path end?
+          if(edge_index == index.BS_NULL) {
+              // Path ends here.
+              break;
+          } else {
+              // If we've got an edge, convert to an actual edge index
+              edge_index -= 2;
+          }
+          // We also should not have negative edges.
+          assert(edge_index >= 0);
+          // Look at the edges we could have taken next
+          vector<Edge> edges_out = side % 2 ? index.edges_on_start(index.rank_to_id(side / 2)) :
+                index.edges_on_end(index.rank_to_id(side / 2));
+          assert(edge_index < edges_out.size());
+          Edge& taken = edges_out[edge_index];
+          // Follow the edge
+          int64_t other_node = taken.from() == index.rank_to_id(side / 2) ? taken.to() :
+                taken.from();
+          bool other_orientation = (side % 2) != taken.from_start() != taken.to_end();
+          // Get the side
+          int64_t other_side = index.id_to_rank(other_node) * 2 + other_orientation;
+          // Go there with where_to
+          offset = index.where_to(side, offset, other_side);
+          side = other_side;
+          // Continue the process from this new side
+      }
+    // We have a thread to follow, take it
+
+    cout << i << " " << j << "\t broken?: \t" << check_if_thread_t_broken(path, index) << endl;
+    }
+  }
+}
+
+void extract_threads_into_threads(xg::XG& index, string output_path,
+        int64_t start_node, int64_t end_node) {
+  end_node = (end_node == -1) ? index.ts_iv.size() : end_node + 1;
+  for(int64_t i = start_node; i < end_node; i++) {
+    // Skip it if no threads start at it
+    if(index.ts_iv[i] == 0) {
+        continue;
+    }
+    // If there are threads starting,
+    for(int64_t j = 0; j < index.ts_iv[i]; j++) {
+      ofstream threadout(output_path+to_string(i)+"_"+to_string(j)+".thread.csv");
+      // For every thread starting there
+      thread_t path;
+      int64_t side = i;
+      int64_t offset = j;
+      while(true) {
+          // Unpack the side into a node traversal
+          xg::XG::ThreadMapping m = {index.rank_to_id(side / 2), (bool) (side % 2)};
+          // Add the mapping to the thread
+          path.push_back(m);
+          // Work out where we go:
+          // What edge of the available edges do we take?
+          int64_t edge_index = index.bs_get(side, offset);
+          // If we find a separator, we're very broken.
+          assert(edge_index != index.BS_SEPARATOR);
+          // Does the path end?
+          if(edge_index == index.BS_NULL) {
+              // Path ends here.
+              break;
+          } else {
+              // If we've got an edge, convert to an actual edge index
+              edge_index -= 2;
+          }
+          // We also should not have negative edges.
+          assert(edge_index >= 0);
+          // Look at the edges we could have taken next
+          vector<Edge> edges_out = side % 2 ? index.edges_on_start(index.rank_to_id(side / 2)) :
+                index.edges_on_end(index.rank_to_id(side / 2));
+          assert(edge_index < edges_out.size());
+          Edge& taken = edges_out[edge_index];
+          // Follow the edge
+          int64_t other_node = taken.from() == index.rank_to_id(side / 2) ? taken.to() :
+                taken.from();
+          bool other_orientation = (side % 2) != taken.from_start() != taken.to_end();
+          // Get the side
+          int64_t other_side = index.id_to_rank(other_node) * 2 + other_orientation;
+          // Go there with where_to
+          offset = index.where_to(side, offset, other_side);
+          side = other_side;
+          // Continue the process from this new side
+      }
+      int64_t total_width = 0;
+      threadout << "tot length \t length \t ID" << endl;
+      for(int64_t k = 0; k < path.size(); k++) {
+        total_width += index.node_length(path[k].node_id);
+        threadout << total_width << "\t" << index.node_length(path[k].node_id) << "\t" << path[k].node_id << endl;
+      }
+      threadout.close();
+    }
+  }
+}
+
+
 
 void extract_threads_into_haplo_ds(xg::XG& index, string output_path,
         int64_t start_node, int64_t end_node, bool make_graph) {

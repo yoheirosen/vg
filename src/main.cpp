@@ -1,3 +1,5 @@
+
+
 #include <iostream>
 #include <fstream>
 #include <ctime>
@@ -5804,6 +5806,7 @@ int main_index(int argc, char** argv) {
                             // We can't have a thread take this edge. Split ane
                             // emit the current mappings and start a new path.
 //#ifdef debug
+                            cerr << endl;
                             cerr << "warning:[vg index] phase " << phase_number << " wants edge "
                                 << last_node << (last_from_start ? "L" : "R") << " - "
                                 << new_node << (new_to_end ? "R" : "L")
@@ -5827,9 +5830,11 @@ int main_index(int argc, char** argv) {
                     // any. For which we need access to the last variant's past-
                     // the-end reference position.
                     size_t ref_pos = nonvariant_starts[phase_number];
+//#ifdef debug
                     cerr << "[vg index] phase " << phase_number << " ref sequence was requested from "
                     << ref_pos << " to " << end - 1 << " inclusive" << endl;
-                    cerr << "[vg index] phase " << phase_number << " adding ";
+                    cerr << "[vg index] phase " << phase_number << " adding ref nodes ";
+//#endif
                     while(ref_pos < end) {
                         // While there is intervening reference
                         // sequence, add it to our phase.
@@ -5842,12 +5847,18 @@ int main_index(int argc, char** argv) {
 
                         // Advance to what's after that mapping
                         ref_pos += index.node_length(ref_mapping.position().node_id());
+//#ifdef debug
                         cerr << active_phase_threads[phase_number].back().node_id << "\t";
+//#endif
                     }
+//#ifdef debug
                     cerr << endl;
+//#endif
                     nonvariant_starts[phase_number] = ref_pos;
-                    cerr << "[vg index] phase " << phase_number << " added ref sequence until "
+//#ifdef debug
+                    cerr << "[vg index] phase " << phase_number << " added ref sequence and moved non-variant start counter to "
                     << ref_pos << endl;
+//#endif
                 };
 
                 // We also have another function to handle each variant as it comes in.
@@ -5856,13 +5867,13 @@ int main_index(int argc, char** argv) {
 
                     // Grab its id, or make one by hashing stuff if it doesn't
                     // have an ID.
-                    string var_name = get_or_make_variant_id(variant);
+                    string var_name = make_variant_id(variant);
 
                     if(alt_paths.count("_alt_" + var_name + "_0") == 0) {
                         // There isn't a reference alt path for this variant.
-#ifdef debug
+//#ifdef debug
                         cerr << endl << "Reference alt for " << var_name << " not in VG set! Skipping!" << endl;
-#endif
+//#endif
                         // Don't bother with this variant
                         return;
                     }
@@ -5878,18 +5889,6 @@ int main_index(int argc, char** argv) {
 
                         // Find the phasing bar
                         auto bar_pos = genotype.find('|');
-
-                        for(int phase_offset = 0; phase_offset < 2; phase_offset++) {
-                            // For both the phases for the sample, add mappings
-                            // through all the fixed reference nodes between the
-                            // last variant and here.
-                            // append_reference_mappings_until(sample_number * 2 + phase_offset, variant.position);
-
-                            // If this variant isn't phased, this will just be a
-                            // reference-matching piece of thread after the last
-                            // variant. If that wasn't phased either, it's just
-                            // a floating perfect reference match.
-                        }
 
                         if(bar_pos == string::npos || bar_pos == 0 || bar_pos + 1 >= genotype.size()) {
                             // If it isn't phased, or we otherwise don't like
@@ -5932,20 +5931,27 @@ int main_index(int argc, char** argv) {
                                 // Since we know that we have alt sequence, it's now
                                 // safe to add in reference sequence
                                 append_reference_mappings_until(sample_number * 2 + phase_offset, variant.position);
-
+//#ifdef debug
                                 cerr << "[vg index] phase " << sample_number * 2 + phase_offset << " adding alt from " << variant.position << " to " << variant.position + variant.ref.size() << endl;
-                                cerr << "[vg index] phase " << sample_number * 2 + phase_offset << " adding: ";
+                                cerr << "[vg index] phase " << sample_number * 2 + phase_offset << " adding alt nodes: ";
+//#endif
                                 for(size_t i = 0; i < alt_path.mapping_size(); i++) {
 
                                   // Then blit mappings from the alt over to the phase thread
                                   append_mapping(sample_number * 2 + phase_offset, alt_path.mapping(i));
+//#ifdef debug
                                   cerr << active_phase_threads[sample_number * 2 + phase_offset].back().node_id << "\t";
+//#endif
                                 }
+//#ifdef debug
                                 cerr << endl;
+//#endif
 
                                 nonvariant_starts[sample_number * 2 + phase_offset] = variant.position + variant.ref.size();
                               } else {
+//#ifdef debug
                                 cerr << "[vg index] phase " << sample_number * 2 + phase_offset << " had conflicting alts; setting rightmost one to ref" << endl;
+//#endif
                               }
                             }
 
@@ -8103,7 +8109,7 @@ int main_construct(int argc, char** argv) {
                 {"threads", required_argument, 0, 't'},
                 {"region", required_argument, 0, 'R'},
                 {"region-is-chrom", no_argument, 0, 'C'},
-                {"node-max", required_argument, 0, 'm'},\
+                {"node-max", required_argument, 0, 'm'},
                 {"flat-alts", no_argument, 0, 'f'},
                 {0, 0, 0, 0}
             };
@@ -8327,6 +8333,10 @@ int main_haplo(int argc, char** argv) {
   bool generate_single_haplo_d_stats = false;
   bool generate_all_haplo_d_stats = false;
   bool graphical_deconstructions = false;
+  bool generate_probabilities = false;
+  double recombination_penalty = 12;
+  bool find_breaks = false;
+  bool print_threads = false;
 
   int c;
   optind = 2;
@@ -8341,13 +8351,18 @@ int main_haplo(int argc, char** argv) {
       {"query-haplo", required_argument, 0, 'q'},
       {"output-path", required_argument, 0, 'o'},
       {"start-node", required_argument, 0, 's'},
+      {"end-node", required_argument, 0, 'e'},
       {"path-labels", required_argument, 0, 'l'},
       {"graphical", no_argument, 0, 'g'},
+      {"probabilities", no_argument, 0, 'p'},
+      {"recombination-penalty", required_argument, 0, 'r'},
+      {"find-breaks", no_argument, 0, 'b'},
+      {"print-threads", no_argument, 0, 't'},
       {0, 0, 0, 0}
     };
 
     int option_index = 0;
-    c = getopt_long (argc, argv, "x:ndAq:o:s:e:l:gh",
+    c = getopt_long (argc, argv, "x:ndAq:o:s:e:l:ghpr:bt",
     long_options, &option_index);
 
     /* Detect the end of the options. */
@@ -8397,6 +8412,22 @@ int main_haplo(int argc, char** argv) {
       graphical_deconstructions = true;
       break;
 
+      case 'p':
+      generate_probabilities = true;
+      break;
+
+      case 'r':
+      recombination_penalty = atof(optarg);
+      break;
+
+      case 'b':
+      find_breaks = true;
+      break;
+
+      case 't':
+      print_threads = true;
+      break;
+
       case '?':
       case 'h':
           help_haplo(argv);
@@ -8437,6 +8468,22 @@ int main_haplo(int argc, char** argv) {
   if(generate_all_haplo_d_stats) {
     extract_threads_into_haplo_ds(index, output_directory, start_node, end_node, graphical_deconstructions);
   }
+
+  if(generate_probabilities) {
+    cerr << "generating probabilities of all threads in index:" << endl;
+    probabilities_of_all_theads_in_index(index, start_node, end_node, recombination_penalty);
+  }
+
+  if(find_breaks) {
+    cerr << "listing all threads in index and whether broken:" << endl;
+    report_threads_and_breaks(index, start_node, end_node);
+  }
+
+  if(print_threads) {
+    cerr << "listing all threads in index and their node sequence:" << endl;
+    extract_threads_into_threads(index, output_directory, start_node, end_node);
+  }
+
   return 0;
 }
 
