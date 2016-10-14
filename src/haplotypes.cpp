@@ -10,16 +10,70 @@ using namespace xg;
 RRMemo::RRMemo(double recombination_penalty)  {
   rho = recombination_penalty;
   exp_rho = exp(-rho);
+  assert(exp_rho < 1);
   continue_probability = 1 - population_size * exp_rho;
   exp_rho = exp_rho / continue_probability;
   S.push_back(std::vector<double>(1, 1.0));
   S_multipliers.push_back(1.0);
   T.push_back(1.0);
   T_multiplier = 1.0 - exp_rho;
+
+  // log versions
+  logT_base = log1p(-exp_rho);
+  for(int i = 0; i < population_size; i++) {
+    logS_bases.push_back(log1p(i*exp_rho));
+  }
 }
 
 RRMemo::~RRMemo(void) {
 
+}
+
+double logsum(double a, double b) {
+  if(b < a) {
+    double c = a;
+    a = b;
+    b = c;
+  }
+  return a + log1p(exp(b - a))
+}
+
+double logSN(vector<double> logRs, vector<double> Is) {
+  if(logRs.size() == 0) {
+    return 0;
+  } else if(logRs.size() == 1) {
+    return logRs[0] + logIs[0];
+  } else {
+    //TODO: try streaming log-sum-exp
+    double max_summand = 0;
+    vector<double> summands;
+    for(int i = 0; i < logRs.size(); i++){
+      summands.push_back(logRs[i] + log(Is[i]));
+      if(summands.back() > max_summand) {
+        max_summand = summands.back();
+      }
+    }
+    double sum = 0;
+    for(int i = 0; i < summands.size(); i++) {
+      sum += exp(summands[i]-max_summand);
+    }
+    sum--;
+    return max_summand + log1p(sum);
+  }
+}
+
+double RRMemo::logT(int width) {
+  return (width-1)*logT_base; //logT_base = log(1 - exp_rho)
+}
+
+double RRMemo::logS(int height, int width) {
+  return (width-1)*logS_bases(height-1); //logS_base = log(1 + i*exp_rho)
+}
+
+double RRMemo::logRRDiff(int height, int width) {
+  //NB that RRS always > RRT
+  return logS(int height, int width)
+        + log1p(-exp((width-1)*(logT(width) - logS(height,width))));
 }
 
 double RRMemo::recombination_penalty() {
@@ -299,6 +353,9 @@ haplo_d::haplo_d(const thread_t& t, XG& graph) {
         cs.back().S.back().I = new_rect.J - rect.J;
       }
     }
+  }
+  if(cs.back().width == 0 && width != 0) {
+    cs.back().width = width;
   }
 }
 
@@ -639,8 +696,6 @@ void extract_threads_into_threads(xg::XG& index, string output_path,
   }
 }
 
-
-
 void extract_threads_into_haplo_ds(xg::XG& index, string output_path,
         int64_t start_node, int64_t end_node, bool make_graph) {
   //ts_iv is a vector of the # of threads starting at each side
@@ -714,13 +769,16 @@ void extract_threads_into_haplo_ds(xg::XG& index, string output_path,
 inline double haplo_d::prev_R(int b, int a) {
   if(cs[b].S[a].prev == -1) {
     return 0;
-  } else {/*
-    if(b >= cs.size()) {
-      cerr << "b >= cs.size()";
-    } else if (a >= cs[b].S.size()) {
-      cerr << "a >= cs[b].S.size()";
-    }*/
+  } else {
     return cs[b-1].S[cs[b].S[a].prev].R;
+  }
+}
+
+inline double haplo_d::prev_logR(int b, int a) {
+  if(cs[b].S[a].prev == -1) {
+    return 0;
+  } else {
+    return cs[b-1].S[cs[b].S[a].prev].logR;
   }
 }
 
@@ -732,6 +790,49 @@ inline int haplo_d::prev_I(int b, int a) {
   }
 }
 
+vector<double> prev_logRs(int b) {
+  vector<double> returnRs;
+  for(int i = 0; i < cs[b].S.size(); i++) {
+    // If R = 0 don't add it; if prev = -1 don't add it
+    if(prev_logR(b,i) > 0) {
+      returnRs.push_back(prev_logR(b,i));
+    }
+  }
+  return returnRs;
+}
+
+vector<int> prev_Is(int b) {
+  vector<int> returnIs;
+  for(int i = 0; i < cs[b].S.size(); i++) {
+    // If R = 0 don't add it; if prev = -1 don't add it
+    if(prev_logR(b,i) > 0) {
+      returnRs.push_back(prev_I(b,i));
+    }
+  }
+  return returnIs;
+}
+
+vector<double> current_logRs(int b) {
+  vector<double> returnRs;
+  for(int i = 0; i < cs[b].S.size(); i++) {
+    if(cs[b].S[i].logR > 0) {
+      returnRs.push_back(cs[b].S[i].logR);
+    }
+  }
+  return returnRs;
+}
+
+vector<int> current_Is(int b) {
+  vector<int> returnIs;
+  for(int i = 0; i < cs[b].S.size(); i++) {
+    if(cs[b].S[i].logR > 0) {
+      returnRs.push_back(cs[b].S[i].I);
+    }
+  }
+  return returnRs;
+}
+
+
 double haplo_d::probability(double recombination_penalty) {
   RRMemo memo = RRMemo(recombination_penalty);
   // defined same as in writeup
@@ -739,9 +840,12 @@ double haplo_d::probability(double recombination_penalty) {
   double S1S2 = 0;
   // compute R for the first interval (which has no predecessor)
   // we are always working at the left edge of a cross_section
+  cerr << "starting probability calculation" << endl;
   if(cs[0].height < 1) {cerr << "h\t" << cs[0].height; return 0;}
   if(cs[0].width < 1) {cerr << "w\t" << cs[0].width; return 0;}
   cs[0].S[0].R = memo.rr_all(cs[0].height,cs[0].width);
+  cs[0].S[0].R = cs[0].S[0].R;// * pow(memo.cont_probability(),cs[0].width);
+  cerr << cs[0].width << "x(" << cs[0].S[0].I << ")->" << cs[0].S[0].R << "\t";
   for (int b = 1; b < cs.size(); b++) {
     S1 = 0;
     S1S2 = 0;
@@ -760,18 +864,55 @@ double haplo_d::probability(double recombination_penalty) {
       ((1 - memo.recombination_penalty()) * (S1 * memo.rr_diff(cs[b].height, cs[b].width)) +
       (prev_R(b,a) * memo.rr_adj(cs[b].width)) +
       (memo.recombination_penalty() * S1S2 * memo.rr_all(cs[b].height,cs[b].width)));
-      cs[b].S[a].R = cs[b].S[a].R * pow(memo.cont_probability(),cs[b].width);
+      cs[b].S[a].R = cs[b].S[a].R; //* pow(memo.cont_probability(),cs[b].width);
     }
+    double total_probability_haplotype = 0;
+    cerr << cs[b].width <<"x(";
+    for(int a = 0; a < cs[b].S.size(); a++) {
+      total_probability_haplotype += cs[b].S[a].R;
+      cerr << cs[b].S[a].I <<"+";
+    }
+    cerr << ")->" << total_probability_haplotype << "\t";
   }
+  cerr << endl;
   double total_probability_haplotype = 0;
   for(int a = 0; a < cs.back().S.size(); a++) {
     total_probability_haplotype += cs.back().S[a].R;
   }
-  if(total_probability_haplotype > 0 ) {
-    return total_probability_haplotype;
-  } else {
-    return 0;
+  return total_probability_haplotype;
+}
+
+double haplo_d::log_probability(double recombination_penalty) {
+  RRMemo memo = RRMemo(recombination_penalty);
+  // defined same as in writeup
+  double logS1 = 0;
+  double logS1S2 = 0;
+  double logpS1S2RRS = 0;
+  double logS1RRD = 0;
+  // compute R for the first interval (which has no predecessor)
+  // we are always working at the left edge of a cross_section
+  cerr << "starting log-probability calculation" << endl;
+  cs[0].S[0].logR = memo.logS(cs[0].height,cs[0].width);
+  cerr << cs[0].width << "x(" << cs[0].S[0].I << ")->" << cs[0].S[0].logR << "\t";
+  for (int b = 1; b < cs.size(); b++) {
+    logS1 = logSN(prev_logRs(b),prev_Is(b));
+    logS1S2 = logSN(current_logRs(b-1),current_Is(b-1));
+    logpS1S2RRS = logS1S2 + memo.recombination_penalty + memo.logS(cs[b].height,cs[b].width);
+    logS1RRD = logS1 + memo.logRRDiff(cs[b].height,cs[b].width) - log(cs[b].height);
+    // calculate contributions from all continuing strips
+    for(int a = 0; a < cs[b].S.size(); a++) {
+      cs[b].S[a].logR = logsum(memo.logT_base + logsum(logS1RRD,logT(cs[b].width)),logpS1S2RRS);
+    }
+    double total_probability_haplotype = logSN(current_logRs(b),current_Is(b));
+    cerr << cs[b].width <<"x(";
+    for(int a = 0; a < cs[b].S.size(); a++) {
+      cerr << cs[b].S[a].I <<"+";
+    }
+    cerr << ")->" << total_probability_haplotype << "\t";
   }
+  cerr << endl;
+  double total_probability_haplotype = logSN(current_logRs(cs.size()-1),current_Is(cs.size()-1));
+  return total_probability_haplotype;
 }
 
 bool RR_tests(void) {

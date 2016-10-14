@@ -12,6 +12,8 @@
 
 using namespace std;
 
+double logsum(double a, double b);
+
 //  RRMemo functions
 //  Created by Jordan Eizenga on 6/21/16.
 struct RRMemo {
@@ -33,6 +35,9 @@ private:
   double S_value(int height, int width);
   double T_value(int width);
 
+  double logT_base;
+  std::vector<double> logS_bases;
+
 public:
   RRMemo(double recombination_penalty);
   ~RRMemo(void);
@@ -44,6 +49,12 @@ public:
   double rr_same(int height, int width);
   double rr_adj(int width);
   double rr_all(int height, int width);
+
+  double logT(int width);
+  double logS(int height, int width);
+  double logRRDiff(int height, int width)
+
+  double logSN(vector<double> logRs, vector<int> Is);
 };
 
 class rectangle {
@@ -60,6 +71,7 @@ public:
   int J = 0;
   int I = 0;
   double R = 0;
+  double logR = 0;
   // Computes J at next_id for the strip corresponding to state
   // NB that this also calls rectangle::extend
   int get_next_J(xg::XG::ThreadMapping next_node, xg::XG& graph);
@@ -115,7 +127,12 @@ public:
   // as implemented are more compact but not easily human-readable
   void unfold_rectangles(string output_path);
   inline double prev_R(int b, int a);
+  inline double prev_logR(int b, int a);
   inline int prev_I(int b, int a);
+  vector<double> prev_logRs(int b);
+  vector<int> prev_Is(int b);
+  vector<double> current_logRs(int b);
+  vector<int> current_Is(int b);
 };
 
 thread_t path_to_thread_t(vg::Path& path);
