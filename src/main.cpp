@@ -34,6 +34,7 @@
 #include "bubbles.hpp"
 #include "translator.hpp"
 #include "haplotypes.hpp"
+#include "haplotype_extracter.hpp"
 
 // Make sure the version macro is a thing
 #ifndef VG_GIT_VERSION
@@ -4795,6 +4796,7 @@ int main_find(int argc, char** argv) {
     string haplotype_alignments;
     string haplotype_alignments_for_likelihoods;
     double recombination_penalty;
+    bool logarithmic = false;
 
     int c;
     optind = 2; // force optind past command positional argument
@@ -4828,11 +4830,12 @@ int main_find(int argc, char** argv) {
                 {"haplotypes", required_argument, 0, 'H'},
                 {"haplotype-likelihoods", required_argument, 0, 'l'},
                 {"recombination-penalty", required_argument, 0, 'X'},
+                {"logarithmic", no_argument, 0, 'b'},
                 {0, 0, 0, 0}
             };
 
         int option_index = 0;
-        c = getopt_long (argc, argv, "d:x:n:e:s:o:k:hc:LS:z:j:CTp:P:r:amg:M:i:DH:l:X:",
+        c = getopt_long (argc, argv, "d:x:n:e:s:o:k:hc:LS:z:j:CTp:P:r:amg:M:i:DH:l:X:b",
                          long_options, &option_index);
 
         // Detect the end of the options.
@@ -4861,14 +4864,14 @@ int main_find(int argc, char** argv) {
             sequence = optarg;
             break;
 
-            case 'M':
-                sequence = optarg;
-                get_mems = true;
-                break;
+        case 'M':
+            sequence = optarg;
+            get_mems = true;
+            break;
 
-            case 'j':
-                kmer_stride = atoi(optarg);
-                break;
+        case 'j':
+            kmer_stride = atoi(optarg);
+            break;
 
         case 'z':
             kmer_size = atoi(optarg);
@@ -4944,6 +4947,10 @@ int main_find(int argc, char** argv) {
 
         case 'X':
             recombination_penalty = atoi(optarg);
+            break;
+
+        case 'b':
+            logarithmic = true;
             break;
 
         case 'h':
@@ -5151,7 +5158,7 @@ int main_find(int argc, char** argv) {
         }
         if(!haplotype_alignments_for_likelihoods.empty()) {
             // What should we do with each alignment?
-            function<void(Alignment&)> lambda = [&xindex,recombination_penalty](Alignment& aln) {
+            function<void(Alignment&)> lambda = [&xindex,recombination_penalty,logarithmic](Alignment& aln) {
               // Check if the path implied by this alignment is interrupted by
               // missing edges in the xg index; if so the likelihood calculation
               // won't be meaningful
@@ -5191,13 +5198,39 @@ int main_find(int argc, char** argv) {
                 }
               }
               if(!thread_broken) {
-                // If not, get probability
-                haplo_d h = haplo_d(t, xindex);
-                h.calculate_Is(xindex);
-                double probability = h.probability(recombination_penalty);
-                cout << probability << endl;
-              } else {
-                cout << t.size() << endl;
+                int t_length = 0;
+                for(int i = 0; i < t.size(); i++) {
+                  t_length += xindex.node_length(t[i].node_id);
+                }
+                if(t_length > 49) {
+                  haplo_d h = haplo_d(t, xindex);
+                  bool valid_haplo = true;
+                  for (int b = 0; b < h.cs.size(); b++) {
+                    if(h.cs[b].height == 0 || h.cs[b].width == 0) {
+                      valid_haplo = false;
+                      break;
+                    }
+                  }
+                  h.calculate_Is(xindex);
+                  if(valid_haplo){
+                    pair<vector<pair<double,int>>,vector<pair<double,int>>> structures = h.identify_structures(
+                            0.95,0.95,5,xindex);
+                    if(!logarithmic) {
+                      RRMemo RR_memo(recombination_penalty);
+                      double probability = h.probability(RR_memo);
+                      cout << t_length << "\t" << structures.first.size() << "\t"
+                            << structures.second.size() << "\t"
+                            << probability << "\t" << log(probability) - RR_memo.log_continue_factor(t_length) << "\t" << endl;
+                    } else {
+                      RRMemo RR_memo(recombination_penalty);
+                      double probability = h.log_probability(RR_memo);
+                      cout << t_length << "\t" << structures.first.size() << "\t"
+                            << structures.second.size() << "\t"
+                            << exp(probability) << "\t" << probability << "\t"
+                            << probability - RR_memo.logS(RR_memo.population_size,t_length) - log(RR_memo.population_size) << endl;
+                    }
+                  }
+                }
               }
             };
             if (haplotype_alignments_for_likelihoods == "-") {
@@ -8318,6 +8351,7 @@ void help_haplo(char** argv) {
          << "    -A, --all-haplos           outputs statistics for all paths in xg index" << endl
          << "    -s, --start-node node      node (in xg index) at which to start assessment of whole xg index" << endl
          << "    -e, --end-node node        node (in xg index) at which to end assessment of whole xg index, inclusive" << endl
+         << "    -i, --inner-index integer        where (within each node) to start enumeration" << endl
          << "    -g, --graphical            output a (non-compact) array showing all strips" << endl;
 }
 
@@ -8328,15 +8362,20 @@ int main_haplo(int argc, char** argv) {
   string output_directory;
   int64_t start_node = 1;
   int64_t end_node = -1;
+  int64_t inner_loop_start_index = 0;
+  int seed = 0;
   bool print_path_names = false;
   bool print_path_node_labels = false;
   bool generate_single_haplo_d_stats = false;
   bool generate_all_haplo_d_stats = false;
   bool graphical_deconstructions = false;
   bool generate_probabilities = false;
-  double recombination_penalty = 12;
+  double recombination_penalty = 9;
   bool find_breaks = false;
   bool print_threads = false;
+  bool tests = false;
+  bool A_expt = false;
+  bool B_expt = false;
 
   int c;
   optind = 2;
@@ -8352,17 +8391,22 @@ int main_haplo(int argc, char** argv) {
       {"output-path", required_argument, 0, 'o'},
       {"start-node", required_argument, 0, 's'},
       {"end-node", required_argument, 0, 'e'},
+      {"inner-index", required_argument, 0, 'i'},
       {"path-labels", required_argument, 0, 'l'},
       {"graphical", no_argument, 0, 'g'},
       {"probabilities", no_argument, 0, 'p'},
       {"recombination-penalty", required_argument, 0, 'r'},
       {"find-breaks", no_argument, 0, 'b'},
       {"print-threads", no_argument, 0, 't'},
+      {"run-tests", no_argument, 0, 'T'},
+      {"A-expt", no_argument, 0, 'a'},
+      {"B-expt", no_argument, 0, 'B'},
+      {"seed", required_argument, 0, 'S'},
       {0, 0, 0, 0}
     };
 
     int option_index = 0;
-    c = getopt_long (argc, argv, "x:ndAq:o:s:e:l:ghpr:bt",
+    c = getopt_long (argc, argv, "x:ndAq:o:s:e:i:l:ghpr:btTaBS:",
     long_options, &option_index);
 
     /* Detect the end of the options. */
@@ -8408,6 +8452,10 @@ int main_haplo(int argc, char** argv) {
       end_node = atoi(optarg);
       break;
 
+      case 'i':
+      inner_loop_start_index = atoi(optarg);
+      break;
+
       case 'g':
       graphical_deconstructions = true;
       break;
@@ -8428,6 +8476,22 @@ int main_haplo(int argc, char** argv) {
       print_threads = true;
       break;
 
+      case 'T':
+      tests = true;
+      break;
+
+      case 'a':
+      A_expt = true;
+      break;
+
+      case 'B':
+      B_expt = true;
+      break;
+
+      case 'S':
+      seed = atoi(optarg);
+      break;
+
       case '?':
       case 'h':
           help_haplo(argv);
@@ -8442,6 +8506,10 @@ int main_haplo(int argc, char** argv) {
   ifstream xg_stream(xg_name);
   cerr << "Using xg index " << xg_name << endl;
   xg::XG index = xg::XG(xg_stream);
+
+  if(tests) {
+    logRR_tests(recombination_penalty);
+  }
 
   if(graphical_deconstructions) {
     cerr << "Warning, graphical deconstructions are massive files" << endl;
@@ -8466,12 +8534,12 @@ int main_haplo(int argc, char** argv) {
   }
 
   if(generate_all_haplo_d_stats) {
-    extract_threads_into_haplo_ds(index, output_directory, start_node, end_node, graphical_deconstructions);
+    extract_threads_into_haplo_ds(index, output_directory, start_node, end_node, inner_loop_start_index, graphical_deconstructions);
   }
 
   if(generate_probabilities) {
     cerr << "generating probabilities of all threads in index:" << endl;
-    probabilities_of_all_theads_in_index(index, start_node, end_node, recombination_penalty);
+    probabilities_of_all_theads_in_index(index, start_node, end_node, inner_loop_start_index, recombination_penalty);
   }
 
   if(find_breaks) {
@@ -8483,6 +8551,106 @@ int main_haplo(int argc, char** argv) {
     cerr << "listing all threads in index and their node sequence:" << endl;
     extract_threads_into_threads(index, output_directory, start_node, end_node);
   }
+
+  if(A_expt) {
+    A_experiment(index,seed);
+  }
+
+  if(B_expt) {
+    B_experiment(index, inner_loop_start_index, recombination_penalty);
+  }
+
+  return 0;
+}
+
+
+void help_trace(char** argv) {
+    cerr << "usage: " << argv[0] << " trace [options]" << endl
+         << "options:" << endl
+         << "    -x, --index FILE           use this xg index" << endl
+         << "    -n, --start-node INT       start at this node" << endl
+         << "    -b, --backwards            iterate backwards over graph" << endl
+         << "    -d, --extend-distance INT  extend search this many nodes" << endl
+         << "    -j, --output-json          path to which to output json" << endl;
+}
+
+int main_trace(int argc, char** argv) {
+  if (argc == 2) {
+      help_trace(argv);
+      return 1;
+  }
+  string xg_name;
+  string json_out;
+  int64_t start_node;
+  int extend_distance = 50;
+  bool backwards = false;
+  int c;
+  optind = 2; // force optind past command positional argument
+  while (true) {
+    static struct option long_options[] =
+        {
+            /* These options set a flag. */
+            //{"verbose", no_argument,       &verbose_flag, 1},
+            {"index", required_argument, 0, 'x'},
+            {"output-json", required_argument, 0, 'j'},
+            {"start-node", required_argument, 0, 'n'},
+            {"extend-distance", required_argument, 0, 'd'},
+            {"backwards", no_argument, 0, 'b'},
+            {0, 0, 0, 0}
+        };
+
+    int option_index = 0;
+    c = getopt_long (argc, argv, "x:j:n:d:bh",
+                     long_options, &option_index);
+
+    /* Detect the end of the options. */
+    if (c == -1)
+        break;
+
+    switch (c)
+    {
+    case 'x':
+        xg_name = optarg;
+        break;
+
+    case 'j':
+        json_out = optarg;
+        break;
+
+    case 'n':
+        start_node = atoi(optarg);
+        break;
+
+    case 'd':
+        extend_distance = atoi(optarg);
+        break;
+
+    case 'b':
+        backwards = true;
+        break;
+
+    case '?':
+    case 'h':
+        help_trace(argv);
+        return 1;
+
+    default:
+        help_trace(argv);
+        abort();
+    }
+  }
+
+  xg::XG xindex;
+  if (!xg_name.empty()) {
+      ifstream in(xg_name.c_str());
+      xindex.load(in);
+  }
+
+  xg::XG::ThreadMapping n;
+  n.node_id = start_node;
+  n.is_reverse = backwards;
+  vector<pair<thread_t,int> > haplotype_list = list_haplotypes(xindex, n, extend_distance);
+  output_weighted_haplotype_list(json_out,haplotype_list,xindex);
 
   return 0;
 }
@@ -8556,7 +8724,9 @@ int main(int argc, char *argv[])
         return main_translate(argc, argv);
     }  else if (command == "version") {
         return main_version(argc, argv);
-    }else {
+    } else if (command == "trace") {
+        return main_trace(argc, argv);
+    } else {
         cerr << "error:[vg] command " << command << " not found" << endl;
         vg_help(argv);
         return 1;
