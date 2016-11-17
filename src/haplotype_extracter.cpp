@@ -19,12 +19,12 @@ void output_weighted_haplotype_list(string output_path, vector<pair<thread_t,int
   for(int i = 0; i < haplotype_list.size(); i++) {
     thread_to_graph_spanned(haplotype_list[i].first, g, index);
   }
-  json_ofstream << pb2json(g);
   for(int i = 0; i < haplotype_list.size(); i++) {
     Path p = path_from_thread_t(haplotype_list[i].first);
     p.set_name(to_string(i));
-    json_ofstream << pb2json(p);
+    *(g.add_path()) = move(p);
   }
+  json_ofstream << pb2json(g);
   json_ofstream.close();
 }
 
