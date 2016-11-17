@@ -4741,6 +4741,7 @@ void help_find(char** argv) {
          << "    -c, --context STEPS    expand the context of the subgraph this many steps" << endl
          << "    -L, --use-length       treat STEPS in -c or M in -r as a length in bases" << endl
          << "    -p, --path TARGET      find the node(s) in the specified path range TARGET=path[:pos1[-pos2]]" << endl
+         << "    -f, --dist-along-path Nfind the node at N nodes from the beginning of the path"
          << "    -P, --position-in PATH find the position of the node (specified by -n) in the given path" << endl
          << "    -r, --node-range N:M   get nodes from N to M" << endl
          << "alignments: (rocksdb only)" << endl
@@ -4797,6 +4798,7 @@ int main_find(int argc, char** argv) {
     string haplotype_alignments_for_likelihoods;
     double recombination_penalty;
     bool logarithmic = false;
+    int distance_along_path = -1;
 
     int c;
     optind = 2; // force optind past command positional argument
@@ -4831,11 +4833,12 @@ int main_find(int argc, char** argv) {
                 {"haplotype-likelihoods", required_argument, 0, 'l'},
                 {"recombination-penalty", required_argument, 0, 'X'},
                 {"logarithmic", no_argument, 0, 'b'},
+                {"dist-along-path", no_argument, 0, 'f'},
                 {0, 0, 0, 0}
             };
 
         int option_index = 0;
-        c = getopt_long (argc, argv, "d:x:n:e:s:o:k:hc:LS:z:j:CTp:P:r:amg:M:i:DH:l:X:b",
+        c = getopt_long (argc, argv, "d:x:n:e:s:o:k:hc:LS:z:j:CTp:P:r:amg:M:i:DH:l:X:bf:",
                          long_options, &option_index);
 
         // Detect the end of the options.
@@ -4953,6 +4956,10 @@ int main_find(int argc, char** argv) {
             logarithmic = true;
             break;
 
+        case 'f':
+            distance_along_path = atoi(optarg);
+            break;
+
         case 'h':
         case '?':
             help_find(argv);
@@ -4987,6 +4994,22 @@ int main_find(int argc, char** argv) {
     if (!xg_name.empty()) {
         ifstream in(xg_name.c_str());
         xindex.load(in);
+    }
+
+    if(distance_along_path > -1) {
+      if(xg_name.empty()) {
+        cerr << "[vg find] error, no xg index supplied" << endl;
+      } else if(path_name.empty()) {
+        cerr << "[vg find] error, no path name supplied" << endl;
+      } else {
+        Path path = xindex.path(path_name);
+        if(distance_along_path >= path.mapping_size()) {
+        	cerr << "[vg find] error, requested position past end of path" << endl;
+        } else {
+        	Mapping mapping = path.mapping(distance_along_path);
+        	cout << mapping.position().node_id() << "\t" << mapping.position().is_reverse();
+        }
+      }
     }
 
     if (get_alignments) {

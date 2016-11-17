@@ -72,15 +72,15 @@ vector<pair<thread_t,int> > list_haplotypes(xg::XG& index, xg::XG::ThreadMapping
   thread_t first_thread = {start_node};
   xg::XG::ThreadSearchState first_state;
   index.extend_search(first_state,first_thread);
-  cerr << first_state.count() << " stubs found at start" << endl;
+  // cerr << first_state.count() << " stubs found at start" << endl;
   vector<Edge> edges = start_node.is_reverse ? index.edges_on_start(start_node.node_id) : index.edges_on_end(start_node.node_id);
-  cerr << edges.size() << " edges on end of " << start_node.node_id << endl;
+  // cerr << edges.size() << " edges on end of " << start_node.node_id << endl;
   for(int i = 0; i < edges.size(); i++) {
     xg::XG::ThreadMapping next_node;
-    cerr << "Have an edge from " << edges[i].from() << "/" << edges[i].from_start() << " to " << edges[i].to() << "/" << edges[i].to_end() << endl;
+    // cerr << "Have an edge from " << edges[i].from() << "/" << edges[i].from_start() << " to " << edges[i].to() << "/" << edges[i].to_end() << endl;
     next_node.node_id = edges[i].to();
     next_node.is_reverse = edges[i].to_end();
-    cerr << "Searching from " << start_node.node_id << "/" << start_node.is_reverse << ", next_node is " << next_node.node_id << "/" << next_node.is_reverse << endl;
+    // cerr << "Searching from " << start_node.node_id << "/" << start_node.is_reverse << ", next_node is " << next_node.node_id << "/" << next_node.is_reverse << endl;
     xg::XG::ThreadSearchState new_state = first_state;
     thread_t t = {next_node};
     // bool edge_exists = check_for_edges(index.rank_to_id(new_state.current_side / 2),new_state.current_side % 2,
@@ -90,7 +90,7 @@ vector<pair<thread_t,int> > list_haplotypes(xg::XG& index, xg::XG::ThreadMapping
       thread_t new_thread = first_thread;
       new_thread.push_back(next_node);
       if(!new_state.is_empty()) {
-        cerr << "Have an intermediate state of count " << new_state.count() << endl;
+        // cerr << "Have an intermediate state of count " << new_state.count() << endl;
         search_intermediates.push_back(make_pair(new_thread,new_state));
       }
     // }
@@ -101,10 +101,10 @@ vector<pair<thread_t,int> > list_haplotypes(xg::XG& index, xg::XG::ThreadMapping
     int check_size = search_intermediates.size();
     vector<Edge> edges = last.first.back().is_reverse ? index.edges_on_start(last.first.back().node_id) : index.edges_on_end(last.first.back().node_id);
     if(edges.size() == 0) {
-      cerr << "Found no edges to continue int-state from node " << last.first.back().node_id << "/" << last.first.back().is_reverse <<endl;
+      // cerr << "Found no edges to continue int-state from node " << last.first.back().node_id << "/" << last.first.back().is_reverse <<endl;
       search_results.push_back(make_pair(last.first,last.second.count()));
     } else {
-      cerr << "Found " << edges.size() << " edges to continue int-state from node " << last.first.back().node_id << "/" << last.first.back().is_reverse <<endl;
+      // cerr << "Found " << edges.size() << " edges to continue int-state from node " << last.first.back().node_id << "/" << last.first.back().is_reverse <<endl;
       for(int i = 0; i < edges.size(); i++) {
         xg::XG::ThreadMapping next_node;
         next_node.node_id = edges[i].to();
@@ -115,7 +115,7 @@ vector<pair<thread_t,int> > list_haplotypes(xg::XG& index, xg::XG::ThreadMapping
               //  next_node.node_id, next_node.is_reverse, index);
         // if(edge_exists) {
           index.extend_search(new_state,next_thread);
-          cerr << "Count is now " << new_state.count() << endl;
+          // cerr << "Count is now " << new_state.count() << endl;
           thread_t new_thread = last.first;
           new_thread.push_back(next_node);
           if(!new_state.is_empty()) {
@@ -132,6 +132,6 @@ vector<pair<thread_t,int> > list_haplotypes(xg::XG& index, xg::XG::ThreadMapping
       }
     }
   }
-  cerr << "Found " << search_results.size() << " haplotypes starting at " << start_node.node_id << endl;
+  // cerr << "Found " << search_results.size() << " haplotypes starting at " << start_node.node_id << endl;
   return search_results;
 }
