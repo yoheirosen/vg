@@ -81,9 +81,10 @@ public:
   // Computes J at next_id for the strip corresponding to state
   // NB that this also calls rectangle::extend
   int get_next_J(xg::XG::ThreadMapping next_node, xg::XG& graph);
+  int get_next_J(thread_t& extension, xg::XG& graph);
   // Extends the gPBWT search state by node <next_id>
   void extend(xg::XG::ThreadMapping next_node, xg::XG& graph);
-  void simple_extend(thread_t extension, xg::XG& graph);
+  void simple_extend(thread_t& extension, xg::XG& graph);
   void simple_extend(xg::XG::ThreadMapping next_node, xg::XG& graph);
   xg::XG::ThreadSearchState state;
 };
@@ -146,6 +147,8 @@ public:
   pair<vector<pair<double,int>>,vector<pair<double,int>>> identify_structures(double leave_threshold,
           double return_threshold, int timeout, xg::XG& graph);
 
+  void log_calculate_Is(xg::XG& graph);
+  void binaryI(xg::XG& graph, thread_t extension, int b, int atop, int abottom, int deltaItop, int deltaIbottom, int Jtop, int Jbottom);
 };
 
 thread_t path_to_thread_t(vg::Path& path);
@@ -153,7 +156,7 @@ thread_t path_to_thread_t(vg::Path& path);
 // A function to take an xg index and extract all of its embedded threads into
 // haplo_ds. This is SLOW to run to completion since there are in general tons
 // of embededded threads in a haplo_d
-void extract_threads_into_haplo_ds(xg::XG& index, string output_path, int64_t start_node, int64_t end_node, int64_t internal_index, bool make_graph);
+// void extract_threads_into_haplo_ds(xg::XG& index, string output_path, int64_t start_node, int64_t end_node, int64_t internal_index, bool make_graph);
 void decompose_and_print(const thread_t& t, xg::XG& graph, string output_path);
 bool check_for_edges(int64_t old_node_id, bool old_node_is_reverse, int64_t new_node_id, bool new_node_is_reverse, xg::XG& index);
 bool check_if_thread_t_broken(const thread_t& t, xg::XG& graph);
