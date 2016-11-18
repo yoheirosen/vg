@@ -156,7 +156,7 @@ thread_t path_to_thread_t(vg::Path& path);
 // A function to take an xg index and extract all of its embedded threads into
 // haplo_ds. This is SLOW to run to completion since there are in general tons
 // of embededded threads in a haplo_d
-// void extract_threads_into_haplo_ds(xg::XG& index, string output_path, int64_t start_node, int64_t end_node, int64_t internal_index, bool make_graph);
+void extract_threads_into_haplo_ds(xg::XG& index, string output_path, int64_t start_node, int64_t end_node, int64_t internal_index, bool make_graph);
 void decompose_and_print(const thread_t& t, xg::XG& graph, string output_path);
 bool check_for_edges(int64_t old_node_id, bool old_node_is_reverse, int64_t new_node_id, bool new_node_is_reverse, xg::XG& index);
 bool check_if_thread_t_broken(const thread_t& t, xg::XG& graph);
