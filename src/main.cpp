@@ -8594,7 +8594,8 @@ void help_trace(char** argv) {
          << "    -n, --start-node INT       start at this node" << endl
          << "    -b, --backwards            iterate backwards over graph" << endl
          << "    -d, --extend-distance INT  extend search this many nodes" << endl
-         << "    -j, --output-json          path to which to output json" << endl;
+         << "    -j, --output-json          path to which to output json" << endl
+         << "    -l, --likelihoods          print haplotype likelihoods to annotation file" << endl;
 }
 
 int main_trace(int argc, char** argv) {
@@ -8607,6 +8608,8 @@ int main_trace(int argc, char** argv) {
   int64_t start_node;
   int extend_distance = 50;
   bool backwards = false;
+  bool likelihoods = false;
+
   int c;
   optind = 2; // force optind past command positional argument
   while (true) {
@@ -8619,11 +8622,12 @@ int main_trace(int argc, char** argv) {
             {"start-node", required_argument, 0, 'n'},
             {"extend-distance", required_argument, 0, 'd'},
             {"backwards", no_argument, 0, 'b'},
+            {"likelihoods", no_argument, 0, 'l'},
             {0, 0, 0, 0}
         };
 
     int option_index = 0;
-    c = getopt_long (argc, argv, "x:j:n:d:bh",
+    c = getopt_long (argc, argv, "x:j:n:d:blh",
                      long_options, &option_index);
 
     /* Detect the end of the options. */
@@ -8652,6 +8656,10 @@ int main_trace(int argc, char** argv) {
         backwards = true;
         break;
 
+    case 'l':
+        likelihoods = true;
+        break;
+
     case '?':
     case 'h':
         help_trace(argv);
@@ -8673,7 +8681,8 @@ int main_trace(int argc, char** argv) {
   n.node_id = start_node;
   n.is_reverse = backwards;
   vector<pair<thread_t,int> > haplotype_list = list_haplotypes(xindex, n, extend_distance);
-  output_weighted_haplotype_list(json_out,haplotype_list,xindex);
+  output_weighted_haplotype_list(json_out, haplotype_list, xindex, likelihoods);
+  output_graph_with_embedded_paths(json_out, haplotype_list, xindex);
 
   return 0;
 }
