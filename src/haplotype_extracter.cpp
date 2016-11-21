@@ -94,7 +94,7 @@ void construct_graph_from_nodes_and_edges(Graph& g, xg::XG& index, set<int64_t>&
 Path path_from_thread_t(thread_t& t) {
 	Path toReturn;
 	int rank = 1;
-	for(int i = 1; i < t.size(); i++) {
+	for(int i = 0; i < t.size(); i++) {
 		Mapping* mapping = toReturn.add_mapping();
 
     // Set up the position
