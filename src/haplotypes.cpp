@@ -340,6 +340,10 @@ haplo_d::haplo_d() {
 
 }
 
+// haplo_d::haplo_d(const thread_t& t, xg::XG& graph) {
+//   initialize_skeleton(t, graph);
+// }
+
 haplo_d::haplo_d(const thread_t& t, XG& graph) {
   rectangle rect;
   rect.J = rect.get_next_J(t[0],graph);
@@ -1065,5 +1069,144 @@ void haplo_d::binaryI(xg::XG& graph, thread_t extension, int b, int atop, int ab
         binaryI(graph, extension, b, mid, abottom, deltaJmid, deltaJbottom, Jmid, Jbottom, level+1);
       }
     }
+  }
+}
+
+vector<rectangle*> haplo_d::trace_strip(int offset) {
+  return trace_strip(0, offset, -1);
+}
+
+vector<rectangle*> haplo_d::trace_strip(int a, int offset, int distance) {
+  vector<rectangle*> to_return;
+  if(a >= cs.size() || a < 0) {
+    cerr << "[haplo_d::trace() error] : a-index out of bounds" << endl;
+    return to_return;
+  } else {
+    if(offset < 0) {
+      to_return.push_back(&cs[a].S.back());
+    } else if (offset >= cs[a].S.size()) {
+      cerr << "[haplo_d::trace() error] : offset-index out of bounds" << endl;
+      return to_return;
+    } else {
+      to_return.push_back(&cs[a].S[offset]);
+    }
+  }
+  if(distance < 0 || distance > cs.size() - a) {
+    distance = cs.size() - a;
+  }
+  for(int i = a + 1; i < distance + a; i++) {
+    int to_add_index = to_return.back()->next;
+    if(to_add_index < 0) {
+      return to_return;
+    } else {
+      to_return.push_back(&cs[i].S[to_add_index]);
+    }
+  }
+}
+
+void haplo_d::build_start(xg::XG::ThreadMapping node, xg::XG& graph) {
+  rectangle rect;
+  rect.J = rect.get_next_J(node,graph);
+  // At the leftmost node there is only one strip, so I = J
+  rect.I = rect.J;
+  int last_height = rect.J;
+  cs.push_back(cross_section(rect.J,0,node));
+  cs.back().S.push_back(rect);
+}
+
+void haplo_d::initialize_skeleton(thread_t& t, xg::XG& graph) {
+  build_start(t[0],graph);
+  initialize_skeleton(t, 1, cs[0],graph);
+}
+
+void haplo_d::initialize_skeleton(thread_t& t, int start, cross_section& prevAs, xg::XG& graph) {
+  initialize_skeleton(t, make_pair(start, t.size()-1), prevAs, graph);
+}
+
+//TODO: translate this
+void haplo_d::initialize_skeleton(thread_t& t, pair<int,int> interval, cross_section& prevAs, xg::XG& graph) {
+  rectangle rect;
+  int new_height;
+  int last_height = prevAs.S[0].J;
+  bool add_rectangle;
+  bool add_A;
+  //TODO: fix this
+  int width = 0;
+  for(int i = interval.first; i <= interval.second; i++) {
+    // Count the number of base pairs since the last entry or exit node
+    width += graph.node_length(t[i-1].node_id);
+    new_height = graph.node_height(t[i]);
+    if(cs.back().S.size() != 0) {
+      if(i == interval.first) {
+        prevAs.S[0];
+      } else {
+        rect = cs.back().S[0];
+      }
+      rect.J = rect.get_next_J(t[i],graph); // step this strip forward
+      // Did any threads leave?
+      if(last_height > rect.J) {
+        add_A = 1;
+      }
+      // Are there any threads here which didn't come from the previous node?
+      if(rect.J < new_height) {
+        add_rectangle = 1;
+        add_A = 1;
+      }
+      // This is an entry or exit node, add a cross-section to the vector of
+      // cross-sections (which corresponds to the "A" set in the theory doc)
+      if(add_A) {
+        cs.back().width = width;
+        width = 0;
+        cs.push_back(cross_section(new_height,i,t[i]));
+      } else {
+        // This isn't a node where anything leaves or joins, let's skip over it
+        cs.back().bridge.push_back(t[i]);
+        for (size_t a = 0; a < cs.back().S.size(); a++) {
+          cs.back().S[a].extend(t[i],graph);
+        }
+      }
+      // This is an entry node; we also need a new rectangle corresponding to the
+      // new strip. We need to do this *before* we populate since cross_sections
+      // arrange rectangles newest -> oldest
+      // NB that add_rectangle implies add_A
+      if(add_rectangle) {
+        rectangle new_rect;
+        new_rect.extend(t[i],graph);
+        new_rect.J = new_height;
+        cs.back().height = new_rect.J;
+        cs.back().S.push_back(new_rect);
+        cs.back().S.back().I = new_rect.J - rect.J;
+      }
+      if(add_A) {
+        int b = cs.size()-1;
+        if(rect.J > 0) {
+          cs[b].S.push_back(rect);
+          cs[b].S.back().prev = 0;
+          cs[b-1].S[0].next = cs[b].S.size()-1;
+        }
+      }
+      last_height = new_height;
+      add_A = 0;
+      add_rectangle = 0;
+    } else {
+      cs.back().width = width;
+      width = 0;
+      cs.push_back(cross_section(new_height,i,t[i]));
+      if(new_height > 0) {
+        rectangle new_rect;
+        new_rect.extend(t[i],graph);
+        new_rect.J = new_height;
+        cs.back().height = new_rect.J;
+        cs.back().S.push_back(new_rect);
+        cs.back().S.back().I = new_rect.J - rect.J;
+      }
+    }
+  }
+  if(cs.size() == 1) {
+    cs.back().width = width;
+  }
+  cs.back().width += graph.node_length(t.back().node_id) - 1;
+  for(int i = 0; i < cs.size(); i++) {
+    tot_width += cs[i].width;
   }
 }

@@ -116,7 +116,6 @@ public:
 // A haplo_d indexes |A| + 1 columns of rectangles S^*_b according in A-order
 class haplo_d {
 public:
-  // RRMemo& memo;
   rectangle empty_rect;
   vector<cross_section> cs;
   int64_t tot_width = 0;
@@ -154,6 +153,14 @@ public:
   pair<vector<pair<double,int>>,vector<pair<double,int>>> identify_structures(double leave_threshold,
           double return_threshold, int timeout, xg::XG& graph);
 
+  vector<rectangle*> trace_strip(int a, int offset, int distance);
+  vector<rectangle*> trace_strip(int offset);
+
+  void build_start(xg::XG::ThreadMapping node, xg::XG& graph);
+
+  void initialize_skeleton(thread_t& t, xg::XG& graph);
+  void initialize_skeleton(thread_t& t, int start, cross_section& prevAs, xg::XG& graph);
+  void initialize_skeleton(thread_t& t, pair<int,int> interval, cross_section& prevAs, xg::XG& graph);
 };
 
 // making thread_t's to operate on
