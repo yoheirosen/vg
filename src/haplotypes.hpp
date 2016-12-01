@@ -84,8 +84,8 @@ public:
   int get_next_J(thread_t& extension, xg::XG& graph);
   // Extends the gPBWT search state by node <next_id>
   void extend(xg::XG::ThreadMapping next_node, xg::XG& graph);
-  void simple_extend(thread_t& extension, xg::XG& graph);
-  void simple_extend(xg::XG::ThreadMapping next_node, xg::XG& graph);
+  void simple_extend(thread_t& extension, xg::XG& graph, int delta_start, int delta_end);
+  void simple_extend(xg::XG::ThreadMapping next_node, xg::XG& graph, int delta_start, int delta_end);
   xg::XG::ThreadSearchState state;
 };
 
@@ -108,6 +108,7 @@ public:
 // A haplo_d indexes |A| + 1 columns of rectangles S^*_b according in A-order
 class haplo_d {
 public:
+  // RRMemo& memo;
   rectangle empty_rect;
   vector<cross_section> cs;
   int64_t tot_width = 0;
@@ -117,25 +118,19 @@ public:
   // calculate_Is() needs to be called for the cross_sections have I values in
   // their rectangles. The haplo_d constructor only builds the most recent (in
   // terms of node history) 1 or 2 rectangles at each node
+  // DEPRECATED
   void calculate_Is(xg::XG& graph);
-  double probability(RRMemo& memo);
-  double log_probability(RRMemo& memo);
-  // Prints csv containing: number of threads joining, number leaving, number of
-  // consistent threads, length in base pairs, |A_curr| for each a->a+1 interval
-  // in the set A of "active" nodes. Returns |A_curr|^max and total length in
-  // base pairs
-  pair<int,int> print_decomposition_stats(string output_path);
-  // Prints csv containing: J-values, prev indices, next indices--ie smallest
-  // human-interpretable representation of the haplo_d
-  void print_decomposition(string output_path);
-  // We want to make a big array where rows are strips and cells are rectangles'
-  // I-values. This is for making pretty pictures of haplo_ds
+  // IN FAVOR OF
+  void log_calculate_Is(xg::XG& graph);
+  void binaryI(xg::XG& graph, thread_t extension, int b, int atop, int abottom, int deltaItop, int deltaIbottom, int Jtop, int Jbottom, int level);
 
-  // This array will be relatively sparse since it will hold all-zero entries
-  // prior to strips joining our query haplotype and all-one entries after. This
-  // is for output to R or a similar program for visualization; haplo_d entities
-  // as implemented are more compact but not easily human-readable
-  void unfold_rectangles(string output_path);
+  void print(ostream& stream);
+  void print_detailed(ostream& stream);
+  void print_detailed_searchstates(ostream& stream);
+  void print_graphical(ostream& stream);
+  void print_neighbours(ostream& stream);
+
+  // accessing substructure for probability calculations:
   inline double prev_R(int b, int a);
   inline double prev_logR(int b, int a);
   inline int prev_I(int b, int a);
@@ -144,28 +139,22 @@ public:
   vector<double> current_logRs(int b);
   vector<int> current_Is(int b);
 
+  double probability(RRMemo& memo);
+  double log_probability(RRMemo& memo);
+
   pair<vector<pair<double,int>>,vector<pair<double,int>>> identify_structures(double leave_threshold,
           double return_threshold, int timeout, xg::XG& graph);
 
-  void log_calculate_Is(xg::XG& graph);
-  void binaryI(xg::XG& graph, thread_t extension, int b, int atop, int abottom, int deltaItop, int deltaIbottom, int Jtop, int Jbottom);
 };
 
+// making thread_t's to operate on
 thread_t path_to_thread_t(vg::Path& path);
+thread_t extract_thread(xg::XG& index, xg::XG::ThreadMapping node, int64_t offset, int64_t max_length);
 
 // A function to take an xg index and extract all of its embedded threads into
 // haplo_ds. This is SLOW to run to completion since there are in general tons
 // of embededded threads in a haplo_d
-void extract_threads_into_haplo_ds(xg::XG& index, string output_path, int64_t start_node, int64_t end_node, int64_t internal_index, bool make_graph);
-void decompose_and_print(const thread_t& t, xg::XG& graph, string output_path);
 bool check_for_edges(int64_t old_node_id, bool old_node_is_reverse, int64_t new_node_id, bool new_node_is_reverse, xg::XG& index);
-bool check_if_thread_t_broken(const thread_t& t, xg::XG& graph);
-void probabilities_of_all_theads_in_index(xg::XG& index, int64_t start_node, int64_t end_node, int64_t internal_index, double recombination_penalty);
-void report_threads_and_breaks(xg::XG& index, int64_t start_node, int64_t end_node);
-void extract_threads_into_threads(xg::XG& index, string output_path, int64_t start_node, int64_t end_node);
 void logRR_tests(double recombination_penalty);
-void A_experiment(xg::XG& index, int seed);
-void B_experiment(xg::XG& index, int64_t internal_index, double recombination_penalty);
-
 
 #endif

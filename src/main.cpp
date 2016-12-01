@@ -1,5 +1,3 @@
-
-
 #include <iostream>
 #include <fstream>
 #include <ctime>
@@ -8379,26 +8377,28 @@ void help_haplo(char** argv) {
 }
 
 int main_haplo(int argc, char** argv) {
+  if (argc == 2) {
+      help_haplo(argv);
+      return 1;
+  }
+
   string xg_name;
-  string query_path_name;
-  // directory to output sets of csv files giving statistics for assessments
-  string output_directory;
-  int64_t start_node = 1;
-  int64_t end_node = -1;
-  int64_t inner_loop_start_index = 0;
-  int seed = 0;
-  bool print_path_names = false;
-  bool print_path_node_labels = false;
-  bool generate_single_haplo_d_stats = false;
-  bool generate_all_haplo_d_stats = false;
-  bool graphical_deconstructions = false;
-  bool generate_probabilities = false;
+  string named_path;
+
+  bool use_embedded_thread = false;
+  int64_t start_node;
+  int extend_distance = -1;
+  bool backwards = false;
+  int64_t offset = 0;
+
   double recombination_penalty = 9;
-  bool find_breaks = false;
-  bool print_threads = false;
+
+  bool display_path_names = false;
+  bool decomposition_only = false;
+  bool print_haplod = false;
+  bool print_haplod_detailed = false;
+
   bool tests = false;
-  bool A_expt = false;
-  bool B_expt = false;
 
   int c;
   optind = 2;
@@ -8406,30 +8406,23 @@ int main_haplo(int argc, char** argv) {
     static struct option long_options[] =
     {
       /* These options set a flag. */
+      //{"verbose", no_argument,       &verbose_flag, 1},
       {"xg-name", required_argument, 0, 'x'},
-      {"display-path-names", no_argument, 0, 'n'},
-      {"haplo-decomp", no_argument, 0, 'd'},
-      {"all-haplos", no_argument, 0, 'A'},
-      {"query-haplo", required_argument, 0, 'q'},
-      {"output-path", required_argument, 0, 'o'},
-      {"start-node", required_argument, 0, 's'},
-      {"end-node", required_argument, 0, 'e'},
-      {"inner-index", required_argument, 0, 'i'},
-      {"path-labels", required_argument, 0, 'l'},
-      {"graphical", no_argument, 0, 'g'},
-      {"probabilities", no_argument, 0, 'p'},
+      {"display-path-names", no_argument, 0, 'N'},
+      {"named_path", required_argument, 0, 'P'},
+      {"start-node", required_argument, 0, 'n'},
+      {"offset", required_argument, 0, 'i'},
+      {"backwards", no_argument, 0, 'b'},
+      {"extend-distance", required_argument, 0, 'd'},
       {"recombination-penalty", required_argument, 0, 'r'},
-      {"find-breaks", no_argument, 0, 'b'},
-      {"print-threads", no_argument, 0, 't'},
-      {"run-tests", no_argument, 0, 'T'},
-      {"A-expt", no_argument, 0, 'a'},
-      {"B-expt", no_argument, 0, 'B'},
-      {"seed", required_argument, 0, 'S'},
+      {"decomposition-only", no_argument, 0, 'o'},
+      {"print-haplo-decomposition", no_argument, 0, 'y'},
+      {"print-detailed", no_argument, 0, 'z'},
       {0, 0, 0, 0}
     };
 
     int option_index = 0;
-    c = getopt_long (argc, argv, "x:ndAq:o:s:e:i:l:ghpr:btTaBS:",
+    c = getopt_long (argc, argv, "x:NPn:bi:d:r:oyzh",
     long_options, &option_index);
 
     /* Detect the end of the options. */
@@ -8442,77 +8435,45 @@ int main_haplo(int argc, char** argv) {
       xg_name = optarg;
       break;
 
+      case 'N':
+      display_path_names = true;
+      break;
+
+      case 'P':
+      named_path = optarg;
+      break;
+
       case 'n':
-      print_path_names = true;
-      break;
-
-      case 'l':
-      print_path_node_labels = true;
-      query_path_name = atoi(optarg);
-      break;
-
-      case 'd':
-      generate_single_haplo_d_stats = true;
-      break;
-
-      case 'A':
-      generate_all_haplo_d_stats = true;
-      break;
-
-      case 'q':
-      query_path_name = optarg;
-      break;
-
-      case 'o':
-      output_directory = optarg;
-      break;
-
-      case 's':
+      use_embedded_thread = true;
       start_node = atoi(optarg);
       break;
 
-      case 'e':
-      end_node = atoi(optarg);
+      case 'b':
+      backwards = true;
       break;
 
       case 'i':
-      inner_loop_start_index = atoi(optarg);
+      offset = atoi(optarg);
       break;
 
-      case 'g':
-      graphical_deconstructions = true;
-      break;
-
-      case 'p':
-      generate_probabilities = true;
+      case 'd':
+      extend_distance = atoi(optarg);
       break;
 
       case 'r':
       recombination_penalty = atof(optarg);
       break;
 
-      case 'b':
-      find_breaks = true;
+      case 'o':
+      decomposition_only = true;
       break;
 
-      case 't':
-      print_threads = true;
+      case 'y':
+      print_haplod = true;
       break;
 
-      case 'T':
-      tests = true;
-      break;
-
-      case 'a':
-      A_expt = true;
-      break;
-
-      case 'B':
-      B_expt = true;
-      break;
-
-      case 'S':
-      seed = atoi(optarg);
+      case 'z':
+      print_haplod_detailed = true;
       break;
 
       case '?':
@@ -8526,61 +8487,56 @@ int main_haplo(int argc, char** argv) {
     }
   }
 
-  ifstream xg_stream(xg_name);
-  cerr << "Using xg index " << xg_name << endl;
-  xg::XG index = xg::XG(xg_stream);
+  xg::XG xindex;
+  if (!xg_name.empty()) {
+      ifstream in(xg_name.c_str());
+      xindex.load(in);
+  } else {
+    cerr << "[xg haplo] error: need to specify an xg index to work on" << endl;
+  }
 
   if(tests) {
+    cerr << "running log-probability calculation tests" << endl;
     logRR_tests(recombination_penalty);
   }
 
-  if(graphical_deconstructions) {
-    cerr << "Warning, graphical deconstructions are massive files" << endl;
-  }
-
-  if(print_path_names){
+  if(display_path_names){
     cerr << "The xg index contains the following named paths, by rank:" << endl;
-    for(size_t path_rank = 1; path_rank <= index.max_path_rank(); path_rank++) {
-      cerr << path_rank << ": " << index.path_name(path_rank) << endl;
+    for(size_t path_rank = 1; path_rank <= xindex.max_path_rank(); path_rank++) {
+      cout << path_rank << "\t" << xindex.path_name(path_rank) << endl;
     }
   }
 
-  if(generate_single_haplo_d_stats) {
-    // Get the path
-    Path path = index.path(query_path_name);
-    // Turn it into a thread_t because that's what the haplo_d initializer takes
-    thread_t thread = path_to_thread_t(path);
-    haplo_d h = haplo_d(thread, index);
-    h.calculate_Is(index);
-    h.print_decomposition_stats(output_directory+query_path_name+".stats.csv");
-    h.unfold_rectangles(output_directory+query_path_name+".plot.csv");
+  if(!named_path.empty() && use_embedded_thread) {
+    cerr << "[xg haplo] error: can't both extract named thread and unnamed embedded thread" << endl;
+    return 0;
   }
 
-  if(generate_all_haplo_d_stats) {
-    extract_threads_into_haplo_ds(index, output_directory, start_node, end_node, inner_loop_start_index, graphical_deconstructions);
+  thread_t t;
+  if(!named_path.empty()) {
+    Path path = xindex.path(named_path);
+    t = path_to_thread_t(path);
+  } else if(use_embedded_thread) {
+    xg::XG::ThreadMapping n;
+    n.node_id = start_node;
+    n.is_reverse = backwards;
+    t = extract_thread(xindex, n, offset, extend_distance);
   }
-
-  if(generate_probabilities) {
-    cerr << "generating probabilities of all threads in index:" << endl;
-    probabilities_of_all_theads_in_index(index, start_node, end_node, inner_loop_start_index, recombination_penalty);
-  }
-
-  if(find_breaks) {
-    cerr << "listing all threads in index and whether broken:" << endl;
-    report_threads_and_breaks(index, start_node, end_node);
-  }
-
-  if(print_threads) {
-    cerr << "listing all threads in index and their node sequence:" << endl;
-    extract_threads_into_threads(index, output_directory, start_node, end_node);
-  }
-
-  if(A_expt) {
-    A_experiment(index,seed);
-  }
-
-  if(B_expt) {
-    B_experiment(index, inner_loop_start_index, recombination_penalty);
+  if(t.size() == 0) {
+    cerr << "[xg haplo] error: thread of length zero queried" << endl;
+  } else {
+    haplo_d h = haplo_d(t, xindex);
+    h.log_calculate_Is(xindex);
+    if(!decomposition_only) {
+      RRMemo memo(recombination_penalty);
+      cout << h.log_probability(memo) << endl;
+    }
+    if(print_haplod) {
+      h.print(cout);
+    }
+    if(print_haplod_detailed) {
+      h.print_detailed(cout);
+    }
   }
 
   return 0;
@@ -8603,12 +8559,15 @@ int main_trace(int argc, char** argv) {
       help_trace(argv);
       return 1;
   }
+
   string xg_name;
   string json_out;
   int64_t start_node;
   int extend_distance = 50;
   bool backwards = false;
   bool likelihoods = false;
+  bool test_decomp = false;
+  bool test_decomp_log = false;
 
   int c;
   optind = 2; // force optind past command positional argument
@@ -8623,11 +8582,13 @@ int main_trace(int argc, char** argv) {
             {"extend-distance", required_argument, 0, 'd'},
             {"backwards", no_argument, 0, 'b'},
             {"likelihoods", no_argument, 0, 'l'},
+            {"test-haplo-decomps", no_argument, 0, 'T'},
+            {"test-haplo-decomps-log", no_argument, 0, 'L'},
             {0, 0, 0, 0}
         };
 
     int option_index = 0;
-    c = getopt_long (argc, argv, "x:j:n:d:blh",
+    c = getopt_long (argc, argv, "x:j:n:d:blLTh",
                      long_options, &option_index);
 
     /* Detect the end of the options. */
@@ -8660,6 +8621,14 @@ int main_trace(int argc, char** argv) {
         likelihoods = true;
         break;
 
+    case 'T':
+        test_decomp = true;
+        break;
+
+    case 'L':
+        test_decomp_log = true;
+        break;
+
     case '?':
     case 'h':
         help_trace(argv);
@@ -8680,9 +8649,28 @@ int main_trace(int argc, char** argv) {
   xg::XG::ThreadMapping n;
   n.node_id = start_node;
   n.is_reverse = backwards;
-  vector<pair<thread_t,int> > haplotype_list = list_haplotypes(xindex, n, extend_distance);
-  output_weighted_haplotype_list(json_out, haplotype_list, xindex, likelihoods);
-  output_graph_with_embedded_paths(json_out, haplotype_list, xindex);
+  int64_t offset = 0;
+  if(!json_out.empty() && !test_decomp && !test_decomp_log) {
+    vector<pair<thread_t,int> > haplotype_list = list_haplotypes(xindex, n, extend_distance);
+    output_weighted_haplotype_list(json_out, haplotype_list, xindex, likelihoods);
+    output_graph_with_embedded_paths(json_out, haplotype_list, xindex);
+  }
+
+  if(test_decomp) {
+    thread_t t = extract_thread(xindex, n, offset, extend_distance);
+    haplo_d h = haplo_d(t, xindex);
+    h.calculate_Is(xindex);
+    h.print_detailed_searchstates(cout);
+  }
+
+  if(test_decomp_log) {
+    thread_t t = extract_thread(xindex, n, offset, extend_distance);
+    cerr << "made thread" << endl;
+    haplo_d h = haplo_d(t, xindex);
+    h.log_calculate_Is(xindex);
+    cerr << "Generated I's by binary search method" << endl;
+    h.print_detailed_searchstates(cout);
+  }
 
   return 0;
 }
