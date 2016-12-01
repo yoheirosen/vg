@@ -6,7 +6,11 @@
 using namespace std;
 using namespace xg;
 
-RRMemo::RRMemo(double recombination_penalty)  {
+RRMemo::RRMemo() {
+  initialize(9.0);
+}
+
+void RRMemo::initialize(double recombination_penalty) {
   rho = recombination_penalty;
   exp_rho = exp(-rho);
   assert(exp_rho < 1);
@@ -23,6 +27,10 @@ RRMemo::RRMemo(double recombination_penalty)  {
   for(int i = 0; i < population_size; i++) {
     logS_bases.push_back(log1p(i*exp_rho));
   }
+}
+
+RRMemo::RRMemo(double recombination_penalty)  {
+  initialize(recombination_penalty);
 }
 
 RRMemo::~RRMemo(void) {

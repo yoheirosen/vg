@@ -20,6 +20,7 @@ double logdiff(double a, double b);
 //  Created by Jordan Eizenga on 6/21/16.
 struct RRMemo {
 private:
+  void initialize(double recombination_penalty);
 
   std::vector<double> S_multipliers;
   double T_multiplier;
@@ -40,6 +41,7 @@ private:
 public:
   int population_size = 5008;
 
+  RRMemo();
   RRMemo(double recombination_penalty);
   ~RRMemo(void);
 
@@ -70,6 +72,8 @@ private:
   int a_index;
 public:
   ~rectangle(void) {};
+  xg::XG::ThreadSearchState state;
+
   // Switched to indices from pointers as quick fix for messy bug caused by
   // reindexing on removal of empty rectangles... TODO? fix this
   int prev = -1;
@@ -78,15 +82,18 @@ public:
   int I = 0;
   double R = 0;
   double logR = 0;
+
   // Computes J at next_id for the strip corresponding to state
   // NB that this also calls rectangle::extend
   int get_next_J(xg::XG::ThreadMapping next_node, xg::XG& graph);
   int get_next_J(thread_t& extension, xg::XG& graph);
-  // Extends the gPBWT search state by node <next_id>
+
+  // Extends the gPBWT search state by node
   void extend(xg::XG::ThreadMapping next_node, xg::XG& graph);
+
+  // Updates the ThreadSearchState if it can be inferred from the surrounding rectangles
   void simple_extend(thread_t& extension, xg::XG& graph, int delta_start, int delta_end);
   void simple_extend(xg::XG::ThreadMapping next_node, xg::XG& graph, int delta_start, int delta_end);
-  xg::XG::ThreadSearchState state;
 };
 
 // A cross-section is a column of rectangles S^a_b, a <= b. Each "rectangle" in
@@ -102,6 +109,7 @@ public:
   int height; // height (in consistent thread_ts)
   int width = 1; // width (in base pairs)
   inline xg::XG::ThreadMapping get_node();
+  // Which nodes were skipped?
   thread_t bridge;
 };
 
