@@ -8399,6 +8399,7 @@ int main_haplo(int argc, char** argv) {
   bool print_haplod_detailed = false;
 
   bool tests = false;
+  bool slow_calc_I = false;
 
   int c;
   optind = 2;
@@ -8418,11 +8419,12 @@ int main_haplo(int argc, char** argv) {
       {"decomposition-only", no_argument, 0, 'o'},
       {"print-haplo-decomposition", no_argument, 0, 'y'},
       {"print-detailed", no_argument, 0, 'z'},
+      {"slow_calc_I", no_argument, 0, 's'},
       {0, 0, 0, 0}
     };
 
     int option_index = 0;
-    c = getopt_long (argc, argv, "x:NPn:bi:d:r:oyzh",
+    c = getopt_long (argc, argv, "x:NPn:bi:d:r:oyzsh",
     long_options, &option_index);
 
     /* Detect the end of the options. */
@@ -8476,6 +8478,10 @@ int main_haplo(int argc, char** argv) {
       print_haplod_detailed = true;
       break;
 
+      case 's':
+      slow_calc_I = true;
+      break;
+
       case '?':
       case 'h':
           help_haplo(argv);
@@ -8526,7 +8532,11 @@ int main_haplo(int argc, char** argv) {
     cerr << "[xg haplo] error: thread of length zero queried" << endl;
   } else {
     haplo_d h = haplo_d(t, xindex);
-    h.log_calculate_Is(xindex);
+    if(!slow_calc_I) {
+      h.log_calculate_Is(xindex);
+    } else {
+      h.seeded_log_calculate_Is(xindex);
+    }
     if(!decomposition_only) {
       RRMemo memo(recombination_penalty);
       cout << h.log_probability(memo) << endl;

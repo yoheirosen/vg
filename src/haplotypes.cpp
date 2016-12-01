@@ -896,6 +896,113 @@ void haplo_d::log_calculate_Is(xg::XG& graph) {
   }
 }
 
+void haplo_d::seeded_log_calculate_Is(xg::XG& graph) {
+  // Things which were calculated in the constructor:
+  // -- A's
+  // -- J for the top continuing and any new rectangle
+  // -- I for any new rectangle
+  // ostream& stream = cout;
+  for(int b = 1; b < cs.size(); b++) {
+    vector<rectangle>& prevAs = cs[b-1].S;
+    vector<rectangle>& currAs = cs[b].S;
+    bool new_threads = (prevAs[0].next == 1);
+    // make sure that there is at least one rectangle here
+    if(prevAs.size() == 0) {
+      cerr << "[vg haplo error] no consistent haplotypes at node " << cs[b-1].get_node().node_id << endl;
+    } else if(prevAs.size() == 1) {
+      currAs.back().I = currAs.back().J;
+      // currAs has size at most 2
+      if(currAs.size() == 2) {
+        currAs[0].I = currAs[0].J - currAs[1].J;
+      }
+    } else if(prevAs.size() >= 2) {
+      // We're going to have to extend, so let's grab the next node
+      XG::ThreadMapping next_node = cs[b].get_node();
+      // Let's also grab the nodes which we'll skip over between this and the last node
+      thread_t extension = cs[b-1].bridge;
+      extension.push_back(next_node);
+      // if J = 0 for a rectangle, then J must be 0 for all older rectangles
+      if(currAs.back().J == 0) {
+        currAs.pop_back();
+      } else {
+        int deltaJ = prevAs[0].J - currAs[prevAs[0].next].J;
+        if(deltaJ == 0) {
+          // cerr << b << ", deltaJ = 0" << endl;
+          currAs[prevAs[0].next].I = prevAs[0].I;
+          int delta_start = prevAs[0].state.range_start - currAs[prevAs[0].next].state.range_start;
+          int delta_end = prevAs[0].state.range_end - currAs[prevAs[0].next].state.range_end;
+          for(int a = 1; a < prevAs.size(); a++) {
+            rectangle new_rect = prevAs[a];
+            new_rect.simple_extend(extension, graph, delta_start, delta_end);
+            new_rect.prev = a;
+            currAs.push_back(new_rect);
+            prevAs[a].next = currAs.size()-1;
+          }
+        } else {
+          vector<int> previously_big;
+          int big_cutoff = 700;
+          for(int i = 1; i < prevAs.size(); i++) {
+            if(prevAs[i].I >= big_cutoff) {
+              previously_big.push_back(i);
+            }
+          }
+          // cerr << "made big list, it's size " << previously_big.size() << endl;
+          vector<rectangle> big_rectangles;
+          vector<int> big_deltas;
+          vector<int> big_Js;
+          for(int i = 0; i < previously_big.size(); i++) {
+            big_rectangles.push_back(prevAs[previously_big[i]]);
+            int Jbig = big_rectangles.back().get_next_J(extension,graph);
+            // cerr << Jbig << "\t" << flush;
+            big_Js.push_back(Jbig);
+            big_deltas.push_back(prevAs[previously_big[i]].J - Jbig);
+            if(Jbig == 0) {
+              break;
+            }
+          }
+          // cerr << endl;
+          // cerr << "collected attributes of big rectangles, " << big_Js.size() << " are nonempty" << endl;
+          if(big_Js.size() > 0) {
+            int Aabove = 0;
+            int Jabove = currAs[prevAs[0].next].J;
+            int dJabove = prevAs[0].J - currAs[prevAs[0].next].J;
+            for(int i = 0; i < previously_big.size(); i++) {
+              if(big_Js[i] == Jabove) {
+                // all rectangles between are actually empty
+                prevAs[currAs.back().prev].next = -1;
+                currAs.pop_back();
+              } else {
+                binaryI(graph, extension, b, Aabove, previously_big[i], dJabove, big_deltas[i], Jabove, big_Js[i], 0);
+              }
+              Aabove = previously_big[i];
+              Jabove = big_Js[i];
+              dJabove = big_deltas[i];
+              if(big_Js[i] == 0) {
+                // Don't build smaller rectangles
+                // Don't add this rectangle
+                break;
+              } else {
+                big_rectangles[i].prev = previously_big[i];
+                currAs.push_back(big_rectangles[i]);
+                prevAs[previously_big[i]].next = currAs.size()-1;
+              }
+            }
+            if(big_Js.back() != 0) {
+              binaryI(graph, extension, b, previously_big.back(), prevAs.size(), big_deltas.back(), 0, big_Js.back(), 0, 0);
+            }
+          } else {
+            binaryI(graph, extension, b, 0, prevAs.size(), deltaJ, 0, currAs[prevAs[0].next].J, 0, 0);
+          }
+          for(int a = 0; a < currAs.size() - 1; a++) {
+            currAs[a].I = currAs[a].J - currAs[a+1].J;
+          }
+          currAs.back().I = currAs.back().J;
+        }
+      }
+    }
+  }
+}
+
 void haplo_d::binaryI(xg::XG& graph, thread_t extension, int b, int atop, int abottom, int deltaJtop, int deltaJbottom, int Jtop, int Jbottom, int level) {
   vector<rectangle>& prevAs = cs[b-1].S;
   vector<rectangle>& currAs = cs[b].S;

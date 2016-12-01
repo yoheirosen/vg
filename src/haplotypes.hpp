@@ -122,6 +122,7 @@ public:
   void calculate_Is(xg::XG& graph);
   // IN FAVOR OF
   void log_calculate_Is(xg::XG& graph);
+  void seeded_log_calculate_Is(xg::XG& graph);
   void binaryI(xg::XG& graph, thread_t extension, int b, int atop, int abottom, int deltaItop, int deltaIbottom, int Jtop, int Jbottom, int level);
 
   void print(ostream& stream);
