@@ -202,6 +202,45 @@ cross_section::cross_section(int64_t height, int b, XG::ThreadMapping node) : he
 
 }
 
+void rectangle::extend(XG::ThreadMapping next_node, XG& graph, vector<vg::Edge>& edges_in, vector<vg::Edge>& edges_out) {
+  int64_t next_side = graph.id_to_rank(next_node.node_id) * 2 + next_node.is_reverse;
+  if(state.current_side == 0) {
+    // We're extending an empty state
+    state.range_start = 0;
+    state.range_end = graph.node_height(next_node);
+  } else {
+    // bool edge_exists = check_for_edges(graph.rank_to_id(state.current_side / 2),state.current_side % 2,
+    //        next_node.node_id, next_node.is_reverse, graph);
+    // Else, look at where the path goes to and apply the where_to function to
+    // shrink the range down.
+    //if(edge_exists) {
+      state.range_start = graph.where_to(state.current_side, state.range_start, next_side, edges_in, edges_out);
+      state.range_end = graph.where_to(state.current_side, state.range_end, next_side, edges_in, edges_out);
+    //} else {
+    //  state.range_end = state.range_start;
+    //}
+  }
+  state.current_side = next_side;
+}
+
+int rectangle::get_next_J(XG::ThreadMapping next_node, XG& graph, vector<vg::Edge>& edges_in, vector<vg::Edge>& edges_out) {
+  extend(next_node, graph, edges_in, edges_out);
+  J = state.count();
+  return state.count();
+}
+
+int rectangle::get_next_J(thread_t& extension, XG& graph, vector<vg::Edge>& edges_in, vector<vg::Edge>& edges_out) {
+  if(extension.size() == 1) {
+    return get_next_J(extension.back(), graph, edges_in, edges_out);
+  } else {
+    xg::XG::ThreadMapping second_last_node = extension.end()[-2];
+    state.current_side = graph.id_to_rank(second_last_node.node_id) * 2 + second_last_node.is_reverse;
+    extend(extension.back(), graph, edges_in, edges_out);
+    J = state.count();
+    return state.count();
+  }
+}
+
 void rectangle::extend(XG::ThreadMapping next_node, XG& graph) {
   int64_t next_side = graph.id_to_rank(next_node.node_id) * 2 + next_node.is_reverse;
   if(state.current_side == 0) {
@@ -859,7 +898,17 @@ void haplo_d::log_calculate_Is(xg::XG& graph) {
   // -- J for the top continuing and any new rectangle
   // -- I for any new rectangle
   // ostream& stream = cout;
+  vector<Edge> edges_out;
+  vector<Edge> edges_in;
   for(int b = 1; b < cs.size(); b++) {
+    xg::XG::ThreadMapping lastnode;
+    if(cs[b-1].bridge.size() == 0) {
+      lastnode = cs[b-1].get_node();
+    } else {
+      lastnode = cs[b-1].bridge.back();
+    }
+    edges_out = lastnode.is_reverse ? graph.edges_on_start(lastnode.node_id) : graph.edges_on_end(lastnode.node_id);
+    edges_in = cs[b].get_node().is_reverse ? graph.edges_on_end(cs[b].get_node().node_id) : graph.edges_on_start(cs[b].get_node().node_id);
     vector<rectangle>& prevAs = cs[b-1].S;
     vector<rectangle>& currAs = cs[b].S;
     bool new_threads = (prevAs[0].next == 1);
@@ -897,7 +946,7 @@ void haplo_d::log_calculate_Is(xg::XG& graph) {
           }
         } else {
           // binaryI(XG&, thread_t, b, atop, abott,    dJtop, dJbott, Jtop,               Jbott, indent level)
-          binaryI(graph, extension, b, 0, prevAs.size(), deltaJ, 0, currAs[prevAs[0].next].J, 0, 0);
+          binaryI(graph, extension, b, 0, prevAs.size(), deltaJ, 0, currAs[prevAs[0].next].J, 0, 0, edges_in, edges_out);
           for(int a = 0; a < currAs.size() - 1; a++) {
             currAs[a].I = currAs[a].J - currAs[a+1].J;
           }
@@ -1015,6 +1064,63 @@ void haplo_d::seeded_log_calculate_Is(xg::XG& graph) {
   }
 }
 
+void haplo_d::binaryI(xg::XG& graph, thread_t extension, int b, int atop, int abottom, int deltaJtop, int deltaJbottom, int Jtop, int Jbottom, int level, vector<vg::Edge>& edges_in, vector<vg::Edge>& edges_out) {
+  vector<rectangle>& prevAs = cs[b-1].S;
+  vector<rectangle>& currAs = cs[b].S;
+  // for(int i = 0; i < level; i++) {
+  //   cerr << "  ";
+  // }
+  // cerr << "called b-I," << b << "\t b = [" << atop << "," << abottom << "]\tJ = [" << Jtop << "," << Jbottom << "]" << endl;
+
+  if(abottom <= atop + 1) {
+    // You've reached max recursion depth
+    return;
+  } else if(deltaJtop == deltaJbottom) {
+    // cerr << "simple_extend" << endl;
+    // The nexting behavior of the J-counts ensures that there are no changes to
+    // thread membership in the interval we're evaluating here. We can safely
+    // extend everythings
+    int delta_start = prevAs[atop].state.range_start - currAs[prevAs[atop].next].state.range_start;
+    int delta_end = prevAs[atop].state.range_end - currAs[prevAs[atop].next].state.range_end;
+    for(int i = atop + 1; i < abottom; i++) {
+      rectangle rect = prevAs[i];
+      rect.simple_extend(extension, graph, delta_start, delta_end);
+      rect.prev = i;
+      rect.J = rect.state.count();
+      currAs.push_back(rect);
+      prevAs[i].next = currAs.size()-1;
+    }
+  } else {
+    // At least one thread diverges within this interval; let's find it
+    int mid = atop + (abottom-atop)/2;
+    rectangle rect_mid = prevAs[mid];
+    int Jmid = rect_mid.get_next_J(extension, graph, edges_in, edges_out);
+    int deltaJmid = prevAs[mid].J - Jmid;
+    if(Jmid == Jtop) {
+      // all rectangles between are actually empty
+      prevAs[currAs.back().prev].next = -1;
+      currAs.pop_back();
+    } else {
+      binaryI(graph, extension, b, atop, mid, deltaJtop, deltaJmid, Jtop, Jmid, level+1, edges_in, edges_out);
+    }
+    if(Jmid == 0) {
+      // Don't build smaller rectangles
+      // Don't add this rectangle
+      return;
+    } else {
+      rect_mid.prev = mid;
+      currAs.push_back(rect_mid);
+      prevAs[mid].next = currAs.size()-1;
+      if(Jbottom == Jmid) {
+        prevAs[currAs.back().prev].next = -1;
+        currAs.pop_back();
+      } else {
+        binaryI(graph, extension, b, mid, abottom, deltaJmid, deltaJbottom, Jmid, Jbottom, level+1, edges_in, edges_out);
+      }
+    }
+  }
+}
+
 void haplo_d::binaryI(xg::XG& graph, thread_t extension, int b, int atop, int abottom, int deltaJtop, int deltaJbottom, int Jtop, int Jbottom, int level) {
   vector<rectangle>& prevAs = cs[b-1].S;
   vector<rectangle>& currAs = cs[b].S;
@@ -1078,18 +1184,12 @@ vector<rectangle*> haplo_d::trace_strip(int offset) {
 
 vector<rectangle*> haplo_d::trace_strip(int a, int offset, int distance) {
   vector<rectangle*> to_return;
-  if(a >= cs.size() || a < 0) {
-    cerr << "[haplo_d::trace() error] : a-index out of bounds" << endl;
-    return to_return;
+  assert(a < cs.size() && a >= 0);
+  assert(offset < cs[a].S.size());
+  if(offset < 0) {
+    to_return.push_back(&cs[a].S.back());
   } else {
-    if(offset < 0) {
-      to_return.push_back(&cs[a].S.back());
-    } else if (offset >= cs[a].S.size()) {
-      cerr << "[haplo_d::trace() error] : offset-index out of bounds" << endl;
-      return to_return;
-    } else {
-      to_return.push_back(&cs[a].S[offset]);
-    }
+    to_return.push_back(&cs[a].S[offset]);
   }
   if(distance < 0 || distance > cs.size() - a) {
     distance = cs.size() - a;
@@ -1105,6 +1205,7 @@ vector<rectangle*> haplo_d::trace_strip(int a, int offset, int distance) {
 }
 
 void haplo_d::build_start(xg::XG::ThreadMapping node, xg::XG& graph) {
+  assert(cs.size() == 0);
   rectangle rect;
   rect.J = rect.get_next_J(node,graph);
   // At the leftmost node there is only one strip, so I = J
@@ -1120,6 +1221,7 @@ void haplo_d::initialize_skeleton(thread_t& t, xg::XG& graph) {
 }
 
 void haplo_d::initialize_skeleton(thread_t& t, int start, cross_section& prevAs, xg::XG& graph) {
+  assert(cs.size() == 0);
   initialize_skeleton(t, make_pair(start, t.size()-1), prevAs, graph);
 }
 

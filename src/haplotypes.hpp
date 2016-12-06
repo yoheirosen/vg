@@ -87,9 +87,13 @@ public:
   // NB that this also calls rectangle::extend
   int get_next_J(xg::XG::ThreadMapping next_node, xg::XG& graph);
   int get_next_J(thread_t& extension, xg::XG& graph);
+  int get_next_J(xg::XG::ThreadMapping next_node, xg::XG& graph, vector<vg::Edge>& edges_in, vector<vg::Edge>& edges_out);
+  int get_next_J(thread_t& extension, xg::XG& graph, vector<vg::Edge>& edges_in, vector<vg::Edge>& edges_out);
 
   // Extends the gPBWT search state by node
   void extend(xg::XG::ThreadMapping next_node, xg::XG& graph);
+  void extend(xg::XG::ThreadMapping next_node, xg::XG& graph, vector<vg::Edge>& edges_in, vector<vg::Edge>& edges_out);
+
 
   // Updates the ThreadSearchState if it can be inferred from the surrounding rectangles
   void simple_extend(thread_t& extension, xg::XG& graph, int delta_start, int delta_end);
@@ -131,6 +135,7 @@ public:
   void log_calculate_Is(xg::XG& graph);
   void seeded_log_calculate_Is(xg::XG& graph);
   void binaryI(xg::XG& graph, thread_t extension, int b, int atop, int abottom, int deltaItop, int deltaIbottom, int Jtop, int Jbottom, int level);
+  void binaryI(xg::XG& graph, thread_t extension, int b, int atop, int abottom, int deltaJtop, int deltaJbottom, int Jtop, int Jbottom, int level, vector<vg::Edge>& edges_in, vector<vg::Edge>& edges_out);
 
   void print(ostream& stream);
   void print_detailed(ostream& stream);
@@ -167,9 +172,6 @@ public:
 thread_t path_to_thread_t(vg::Path& path);
 thread_t extract_thread(xg::XG& index, xg::XG::ThreadMapping node, int64_t offset, int64_t max_length);
 
-// A function to take an xg index and extract all of its embedded threads into
-// haplo_ds. This is SLOW to run to completion since there are in general tons
-// of embededded threads in a haplo_d
 bool check_for_edges(int64_t old_node_id, bool old_node_is_reverse, int64_t new_node_id, bool new_node_is_reverse, xg::XG& index);
 void logRR_tests(double recombination_penalty);
 
