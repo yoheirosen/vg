@@ -301,6 +301,18 @@ inline XG::ThreadMapping cross_section::get_node() {
   return node;
 }
 
+inline bool cross_section::has_squashed_nodes() {
+  return (bridge.size() != 0);
+}
+
+inline XG::ThreadMapping cross_section::get_last_node() {
+  if(has_squashed_nodes()) {
+    return bridge.back();
+  } else {
+    return get_node();
+  }
+}
+
 bool check_for_edges(int64_t old_node_id, bool old_node_is_reverse, int64_t new_node_id,
           bool new_node_is_reverse, xg::XG& index) {
   // What edge are we following
@@ -907,6 +919,7 @@ void haplo_d::log_calculate_Is(xg::XG& graph) {
     } else {
       lastnode = cs[b-1].bridge.back();
     }
+    // edges_out = cs[b-1].get_last_node().is_reverse ? graph.edges_on_start(cs[b-1].get_last_node().node_id) : graph.edges_on_end(cs[b-1].get_last_node().node_id);
     edges_out = lastnode.is_reverse ? graph.edges_on_start(lastnode.node_id) : graph.edges_on_end(lastnode.node_id);
     edges_in = cs[b].get_node().is_reverse ? graph.edges_on_end(cs[b].get_node().node_id) : graph.edges_on_start(cs[b].get_node().node_id);
     vector<rectangle>& prevAs = cs[b-1].S;
@@ -963,9 +976,20 @@ void haplo_d::seeded_log_calculate_Is(xg::XG& graph) {
   // -- J for the top continuing and any new rectangle
   // -- I for any new rectangle
   // ostream& stream = cout;
+  vector<Edge> edges_out;
+  vector<Edge> edges_in;
   for(int b = 1; b < cs.size(); b++) {
     vector<rectangle>& prevAs = cs[b-1].S;
     vector<rectangle>& currAs = cs[b].S;
+    xg::XG::ThreadMapping lastnode;
+    if(cs[b-1].bridge.size() == 0) {
+      lastnode = cs[b-1].get_node();
+    } else {
+      lastnode = cs[b-1].bridge.back();
+    }
+    edges_out = lastnode.is_reverse ? graph.edges_on_start(lastnode.node_id) : graph.edges_on_end(lastnode.node_id);
+    // edges_out = cs[b-1].get_last_node().is_reverse ? graph.edges_on_start(cs[b-1].get_last_node().node_id) : graph.edges_on_end(cs[b-1].get_last_node().node_id);
+    edges_in = cs[b].get_node().is_reverse ? graph.edges_on_end(cs[b].get_node().node_id) : graph.edges_on_start(cs[b].get_node().node_id);
     bool new_threads = (prevAs[0].next == 1);
     // make sure that there is at least one rectangle here
     if(prevAs.size() == 0) {
@@ -1001,7 +1025,7 @@ void haplo_d::seeded_log_calculate_Is(xg::XG& graph) {
           }
         } else {
           vector<int> previously_big;
-          int big_cutoff = 700;
+          int big_cutoff = 400;
           for(int i = 1; i < prevAs.size(); i++) {
             if(prevAs[i].I >= big_cutoff) {
               previously_big.push_back(i);
@@ -1013,7 +1037,7 @@ void haplo_d::seeded_log_calculate_Is(xg::XG& graph) {
           vector<int> big_Js;
           for(int i = 0; i < previously_big.size(); i++) {
             big_rectangles.push_back(prevAs[previously_big[i]]);
-            int Jbig = big_rectangles.back().get_next_J(extension,graph);
+            int Jbig = big_rectangles.back().get_next_J(extension,graph, edges_in, edges_out);
             // cerr << Jbig << "\t" << flush;
             big_Js.push_back(Jbig);
             big_deltas.push_back(prevAs[previously_big[i]].J - Jbig);
@@ -1033,7 +1057,7 @@ void haplo_d::seeded_log_calculate_Is(xg::XG& graph) {
                 prevAs[currAs.back().prev].next = -1;
                 currAs.pop_back();
               } else {
-                binaryI(graph, extension, b, Aabove, previously_big[i], dJabove, big_deltas[i], Jabove, big_Js[i], 0);
+                binaryI(graph, extension, b, Aabove, previously_big[i], dJabove, big_deltas[i], Jabove, big_Js[i], 0, edges_in, edges_out);
               }
               Aabove = previously_big[i];
               Jabove = big_Js[i];
@@ -1049,10 +1073,10 @@ void haplo_d::seeded_log_calculate_Is(xg::XG& graph) {
               }
             }
             if(big_Js.back() != 0) {
-              binaryI(graph, extension, b, previously_big.back(), prevAs.size(), big_deltas.back(), 0, big_Js.back(), 0, 0);
+              binaryI(graph, extension, b, previously_big.back(), prevAs.size(), big_deltas.back(), 0, big_Js.back(), 0, 0, edges_in, edges_out);
             }
           } else {
-            binaryI(graph, extension, b, 0, prevAs.size(), deltaJ, 0, currAs[prevAs[0].next].J, 0, 0);
+            binaryI(graph, extension, b, 0, prevAs.size(), deltaJ, 0, currAs[prevAs[0].next].J, 0, 0, edges_in, edges_out);
           }
           for(int a = 0; a < currAs.size() - 1; a++) {
             currAs[a].I = currAs[a].J - currAs[a+1].J;
@@ -1311,4 +1335,39 @@ void haplo_d::initialize_skeleton(thread_t& t, pair<int,int> interval, cross_sec
   for(int i = 0; i < cs.size(); i++) {
     tot_width += cs[i].width;
   }
+}
+
+inline bool haplo_d::has_joining_node(int index) {
+  if(cs[index].S[0].prev == -1) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+rectangle* haplo_d::joining_node(int index) {
+  if(!has_joining_node(index)) {
+    return nullptr;
+  } else {
+    return &cs[index].S[0];
+  }
+}
+
+rectangle* haplo_d::last_continuing(int index) {
+  if(!has_joining_node(index)) {
+    return &cs[index].S[0];
+  } else {
+    if(cs[index].S.size() > 1) {
+      return &cs[index].S[1];
+    } else {
+      return nullptr;
+    }
+  }
+}
+
+cross_section cross_section::cs_shell() {
+  cross_section to_return(height, b_index, node);
+  to_return.width = width;
+  to_return.bridge = bridge;
+  return to_return;
 }

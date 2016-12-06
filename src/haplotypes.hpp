@@ -113,8 +113,11 @@ public:
   int height; // height (in consistent thread_ts)
   int width = 1; // width (in base pairs)
   inline xg::XG::ThreadMapping get_node();
+  inline bool has_squashed_nodes();
+  inline xg::XG::ThreadMapping get_last_node();
   // Which nodes were skipped?
   thread_t bridge;
+  cross_section cs_shell();
 };
 
 // A haplo_d indexes |A| + 1 columns of rectangles S^*_b according in A-order
@@ -166,6 +169,10 @@ public:
   void initialize_skeleton(thread_t& t, xg::XG& graph);
   void initialize_skeleton(thread_t& t, int start, cross_section& prevAs, xg::XG& graph);
   void initialize_skeleton(thread_t& t, pair<int,int> interval, cross_section& prevAs, xg::XG& graph);
+
+  inline bool has_joining_node(int index);
+  rectangle* joining_node(int index);
+  rectangle* last_continuing(int index);
 };
 
 // making thread_t's to operate on
