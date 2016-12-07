@@ -184,6 +184,9 @@ thread_t extract_thread(xg::XG& index, xg::XG::ThreadMapping node, int64_t offse
 bool check_for_edges(int64_t old_node_id, bool old_node_is_reverse, int64_t new_node_id, bool new_node_is_reverse, xg::XG& index);
 void logRR_tests(double recombination_penalty);
 
-int find_node(thread_t t, xg::XG::ThreadMapping node, int hint);
+int find_node(thread_t& t, xg::XG::ThreadMapping node, int hint);
+int find_node(thread_t& t, xg::XG::ThreadMapping node);
+int find_node(haplo_d& h, xg::XG::ThreadMapping node, int hint);
+
 
 #endif

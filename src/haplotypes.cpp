@@ -1434,7 +1434,20 @@ haplo_d recombine_arms(haplo_d& left, haplo_d& right, int left_cut, int right_jo
   }
 }
 
-int find_node(thread_t t, xg::XG::ThreadMapping node, int hint) {
+int find_node(thread_t& t, xg::XG::ThreadMapping node) {
+  int hint = (t.size() - 1)/2;
+  return find_node(t, node, hint);
+}
+
+int find_node(haplo_d& h, xg::XG::ThreadMapping node, int hint) {
+  thread_t t;
+  for(int i = 0; i < h.cs.size(); i++) {
+    t.push_back(h.cs[i].get_node());
+  }
+  return find_node(t, node, hint);
+}
+
+int find_node(thread_t& t, xg::XG::ThreadMapping node, int hint) {
   if(hint > t.size()) {
     hint = (t.size() - 1)/2;
   }
