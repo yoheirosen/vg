@@ -913,14 +913,14 @@ void haplo_d::log_calculate_Is(xg::XG& graph) {
   vector<Edge> edges_out;
   vector<Edge> edges_in;
   for(int b = 1; b < cs.size(); b++) {
-    xg::XG::ThreadMapping lastnode;
-    if(cs[b-1].bridge.size() == 0) {
-      lastnode = cs[b-1].get_node();
-    } else {
-      lastnode = cs[b-1].bridge.back();
-    }
-    // edges_out = cs[b-1].get_last_node().is_reverse ? graph.edges_on_start(cs[b-1].get_last_node().node_id) : graph.edges_on_end(cs[b-1].get_last_node().node_id);
-    edges_out = lastnode.is_reverse ? graph.edges_on_start(lastnode.node_id) : graph.edges_on_end(lastnode.node_id);
+    // xg::XG::ThreadMapping lastnode;
+    // if(cs[b-1].bridge.size() == 0) {
+    //   lastnode = cs[b-1].get_node();
+    // } else {
+    //   lastnode = cs[b-1].bridge.back();
+    // }
+    edges_out = cs[b-1].get_last_node().is_reverse ? graph.edges_on_start(cs[b-1].get_last_node().node_id) : graph.edges_on_end(cs[b-1].get_last_node().node_id);
+    // edges_out = lastnode.is_reverse ? graph.edges_on_start(lastnode.node_id) : graph.edges_on_end(lastnode.node_id);
     edges_in = cs[b].get_node().is_reverse ? graph.edges_on_end(cs[b].get_node().node_id) : graph.edges_on_start(cs[b].get_node().node_id);
     vector<rectangle>& prevAs = cs[b-1].S;
     vector<rectangle>& currAs = cs[b].S;
@@ -981,14 +981,14 @@ void haplo_d::seeded_log_calculate_Is(xg::XG& graph) {
   for(int b = 1; b < cs.size(); b++) {
     vector<rectangle>& prevAs = cs[b-1].S;
     vector<rectangle>& currAs = cs[b].S;
-    xg::XG::ThreadMapping lastnode;
-    if(cs[b-1].bridge.size() == 0) {
-      lastnode = cs[b-1].get_node();
-    } else {
-      lastnode = cs[b-1].bridge.back();
-    }
-    edges_out = lastnode.is_reverse ? graph.edges_on_start(lastnode.node_id) : graph.edges_on_end(lastnode.node_id);
-    // edges_out = cs[b-1].get_last_node().is_reverse ? graph.edges_on_start(cs[b-1].get_last_node().node_id) : graph.edges_on_end(cs[b-1].get_last_node().node_id);
+    // xg::XG::ThreadMapping lastnode;
+    // if(cs[b-1].bridge.size() == 0) {
+    //   lastnode = cs[b-1].get_node();
+    // } else {
+    //   lastnode = cs[b-1].bridge.back();
+    // }
+    // edges_out = lastnode.is_reverse ? graph.edges_on_start(lastnode.node_id) : graph.edges_on_end(lastnode.node_id);
+    edges_out = cs[b-1].get_last_node().is_reverse ? graph.edges_on_start(cs[b-1].get_last_node().node_id) : graph.edges_on_end(cs[b-1].get_last_node().node_id);
     edges_in = cs[b].get_node().is_reverse ? graph.edges_on_end(cs[b].get_node().node_id) : graph.edges_on_start(cs[b].get_node().node_id);
     bool new_threads = (prevAs[0].next == 1);
     // make sure that there is at least one rectangle here
@@ -1370,4 +1370,96 @@ cross_section cross_section::cs_shell() {
   to_return.width = width;
   to_return.bridge = bridge;
   return to_return;
+}
+
+haplo_d recombine_arms(haplo_d& left, haplo_d& right, int left_cut, int right_join, xg::XG& graph) {
+  haplo_d to_return;
+  if(!right.has_joining_node(right_join)) {
+    return to_return;
+  } else {
+    vector<rectangle*> boundary = right.trace_strip(right_join, 0, -1);
+    rectangle rect = left.cs[left_cut].S[0];
+    thread_t extension = left.cs[left_cut].bridge;
+    int lastJ = rect.J;
+    vector<int> boundaryDeltas;
+    vector<int> boundaryJs;
+    for(int i = 0; i < boundary.size(); i++) {
+      to_return.cs.push_back(right.cs[right_join + i].cs_shell());
+      extension.push_back(to_return.cs[i].get_node());
+      int new_J = rect.get_next_J(extension,graph);
+      boundaryDeltas.push_back(new_J - lastJ);
+      if(new_J > 0) {
+        boundaryJs.push_back(new_J);
+      } else {
+        break;
+      }
+      if(boundary[i]->J - new_J > 0) {
+        rectangle joiners;
+        if(i > 0) {
+          joiners.prev = 0;
+          to_return.cs[i-1].S[0].next = 0;
+        } else {
+          joiners.prev = -1;
+        }
+        joiners.J = boundary[i]->J;
+        joiners.I = boundary[i]->J - new_J;
+        to_return.cs[i].S.push_back(joiners);
+      }
+      if(new_J > 0) {
+        rectangle continuing;
+        continuing.J = new_J;
+        if(i > 0) {
+          continuing.prev = to_return.cs[i-1].S.size() - 1;
+          to_return.cs[i-1].S.back().next = to_return.cs[i].S.size();
+        }
+        to_return.cs[i].S.push_back(continuing);
+      }
+      lastJ = new_J;
+      extension = left.cs[left_cut].bridge;
+    }
+    for(int i = 0; i < left.cs[left_cut].S.size(); i++) {
+      //build first column
+    }
+    vector<Edge> edges_out;
+    vector<Edge> edges_in;
+    for(int i = 1; i < boundaryJs.size(); i++) {
+      edges_out = to_return.cs[i-1].get_last_node().is_reverse ? graph.edges_on_start(to_return.cs[i-1].get_last_node().node_id) : graph.edges_on_end(to_return.cs[i-1].get_last_node().node_id);
+      edges_in = to_return.cs[i].get_node().is_reverse ? graph.edges_on_end(to_return.cs[i].get_node().node_id) : graph.edges_on_start(to_return.cs[i].get_node().node_id);
+      to_return.binaryI(graph, extension, i, to_return.cs[i].S.back().prev, to_return.cs[i-1].S.size(), boundaryDeltas[i], 0, boundaryJs[i], 0, 0, edges_in, edges_out);
+      for(int a = 0; a < to_return.cs[i].S.size() - 1; a++) {
+        to_return.cs[i].S[a].I = to_return.cs[i].S[a].J - to_return.cs[i].S[a+1].J;
+      }
+      to_return.cs[i].S.back().I = to_return.cs[i].S.back().J;
+    }
+  }
+}
+
+int find_node(thread_t t, xg::XG::ThreadMapping node, int hint) {
+  if(hint > t.size()) {
+    hint = (t.size() - 1)/2;
+  }
+  if(t[hint].node_id == node.node_id && t[hint].is_reverse == node.is_reverse) {
+    return hint;
+  } else {
+    int above = t.size() - hint;
+    int bound = max(above,hint);
+    int search_up = hint;
+    int search_down = hint;
+    for(int i = 1; i < bound; i++) {
+      if(search_up < t.size() - 1) {
+        search_up++;
+        if(t[search_up].node_id == node.node_id && t[search_up].is_reverse == node.is_reverse) {
+          return search_up;
+        }
+      }
+      if(search_down > 0) {
+        search_down--;
+        if(t[search_down].node_id == node.node_id && t[search_down].is_reverse == node.is_reverse) {
+          return search_down;
+        }
+      }
+    }
+  }
+  // wasn't found!
+  return -1;
 }

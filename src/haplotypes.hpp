@@ -175,11 +175,15 @@ public:
   rectangle* last_continuing(int index);
 };
 
+haplo_d recombine_armss(haplo_d& left, haplo_d& right, int left_cut, int right_join, xg::XG& graph);
+
 // making thread_t's to operate on
 thread_t path_to_thread_t(vg::Path& path);
 thread_t extract_thread(xg::XG& index, xg::XG::ThreadMapping node, int64_t offset, int64_t max_length);
 
 bool check_for_edges(int64_t old_node_id, bool old_node_is_reverse, int64_t new_node_id, bool new_node_is_reverse, xg::XG& index);
 void logRR_tests(double recombination_penalty);
+
+int find_node(thread_t t, xg::XG::ThreadMapping node, int hint);
 
 #endif
